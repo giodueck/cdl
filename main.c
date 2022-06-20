@@ -193,7 +193,9 @@ int main()
 
     // These will be 0, but for consistency are added anyways
     head.weights = matrix_create(n_inputs, 1);
+    head.ca_weights = matrix_create(n_inputs, 1);
     head.biases = matrix_create(n_inputs, 1);
+    head.ca_biases = matrix_create(n_inputs, 1);
     head.last_activations = matrix_create(n_inputs, 1);
     head.self = NULL;
 
@@ -240,13 +242,14 @@ int main()
     }
     printf("Label: %d\n", labels[0]);
 
-    // // loading test
-    // dl_free(&head);
-    // head = dl_load("test.nnd");
+    // loading test
+    dl_free(&head);
+    head = dl_load("test.dld");
 
     output = dl_process(&head, input);
+    if (!output.matrix) exit(1);
     int choice;
-    double confidence = 0;
+    double confidence = 0, uncertainty = 0;
     for (int i = 0; i < n_outputs; i++)
     {
         if (output.matrix[i][0] > confidence)
@@ -255,8 +258,14 @@ int main()
             choice = i;
         }
     }
+    for (int i = 0; i < n_outputs; i++)
+    {
+        if (output.matrix[i][0] > uncertainty && output.matrix[i][0] < confidence)
+            uncertainty = output.matrix[i][0];
+    }
+    
     matrix_print(output, NULL);
-    printf("Choice: %d\nLabel: %d\n", choice, labels[img_index]);
+    printf("Choice: %d\nConfidence: %.2lf%%\nLabel: %d\n", choice, (confidence - uncertainty) * 100.0, labels[img_index]);
 
     expected.matrix[labels[img_index]][0] = 1;
     printf("Cost: %.4lf\n", dl_cost(output, expected));
@@ -266,11 +275,11 @@ int main()
     dl_adjust(&head);
     // Print activations
     printf("1st layer activations:\n");
-    matrix_print(l1.last_activations, "\n");
+    matrix_print(head.next->last_activations, "\n");
     printf("2nd layer activations:\n");
-    matrix_print(l2.last_activations, "\n");
+    matrix_print(head.next->next->last_activations, "\n");
     printf("Output layer activations:\n");
-    matrix_print(tail.last_activations, "\n");
+    matrix_print(head.next->next->next->last_activations, "\n");
 
     // Cleanup code
     matrix_free(input);

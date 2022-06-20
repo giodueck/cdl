@@ -141,8 +141,6 @@ double randfrom(double min, double max)
 // Fills a matrix with random data, returns the same matrix
 matrix matrix_init_rand(matrix A, double min, double max)
 {
-    srand(time(0));
-
     for (int i = 0; i < A.height; i++)
         for (int j = 0; j < A.width; j++)
             A.matrix[i][j] = randfrom(min, max);
@@ -201,7 +199,7 @@ matrix dl_process(node *in_node, matrix input)
     // Error checking
     if (in_node->prev == NULL && !dl_check(in_node))
     {
-        fprintf(stderr, "dl_process: Layers incompatible\n");
+        fprintf(stderr, "dl_process: Check failed\n");
         return NULL_MATRIX;
     }
     if (in_node->prev == NULL && (input.width != 1 || input.height != in_node->weights.height))
@@ -301,7 +299,9 @@ int dl_assemble(node *head, node **hidden_layers, int hidden_count, node *tail)
 int dl_free(node *head)
 {
     matrix_free(head->biases);
+    matrix_free(head->ca_biases);
     matrix_free(head->weights);
+    matrix_free(head->ca_weights);
     matrix_free(head->last_activations);
 
     if (head->next) // if not tail
@@ -360,11 +360,15 @@ node dl_load(const char *filename)
     int h, w;
     for (int i = 0; i < node_count; i++)
     {
+        // Since only one malloc is used, it only needs to be freed once for the input node
+        nodes[i].self = NULL;
+
         // write weights matrix
         fread(&h, sizeof(int), 1, fd);
         fread(&w, sizeof(int), 1, fd);
         
         nodes[i].weights = matrix_create(h, w);
+        nodes[i].ca_weights = matrix_create(h, w);
         for (int r = 0; r < h; r++)
             fread(nodes[i].weights.matrix[r], sizeof(double), w, fd);
 
@@ -373,6 +377,8 @@ node dl_load(const char *filename)
         fread(&w, sizeof(int), 1, fd);
         
         nodes[i].biases = matrix_create(h, w);
+        nodes[i].ca_biases = matrix_create(h, w);
+        nodes[i].last_activations = matrix_create(h, w);
         for (int r = 0; r < h; r++)
             fread(nodes[i].biases.matrix[r], sizeof(double), w, fd);
     }
