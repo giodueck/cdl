@@ -50,7 +50,7 @@ For each node there are 2 matrices, before each one 2 integers define the dimens
 Data:
 - uint: node count
 - node:
-  - matrix: neurons:
+  - matrix: weights:
     - int: height
     - int: width
     - double[height * width]: matrix
