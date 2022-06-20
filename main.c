@@ -261,7 +261,7 @@ int main()
     expected.matrix[labels[img_index]][0] = 1;
     printf("Cost: %.4lf\n", dl_cost(output, expected));
 
-    dl_dump(&head, "test.nnd");
+    dl_dump(&head, "test.dld");
 
     dl_adjust(&head);
     // Print activations
