@@ -1,6 +1,14 @@
 #ifndef NN_TOOLS_H
 #define NN_TOOLS_H
 
+
+#define DL_INPUT    0
+#define DL_HIDDEN   1
+#define DL_OUTPUT   2
+
+#define DL_RANDMAX 1
+#define DL_RANDMIN -1
+
 // Matrix code
 
 // Note: the matrix itself is just pointer to pointers,
@@ -62,8 +70,9 @@ typedef struct node
     struct node* self;
 } node;
 
-// Creates and returns a pointer to a node.
+// Creates and returns a pointer to a node
 // If prev is NULL, the node will be an input node, otherwise, the node pointed to by prev will point to this node as .next
+// type is either DL_INPUT, DL_HIDDEN or DL_OUTPUT
 node *dl_create_node(int type, int size, node *prev);
 
 // Using an input column and the neural networks input node, calculate the result column
@@ -71,16 +80,16 @@ matrix dl_process(node *in_node, matrix input);
 
 // Checks if the network is valid
 //  0 -> not valid
-//  1 -> valid
+//  number of layers -> valid
 int dl_check(node *in_node);
 
 // Assembles all the nodes into a linked structure usable by nn_process and nn_check using the head node
 // Calls nn_check to check for the result
 //  0 -> not valid
-//  1 -> valid
+//  number of layers -> valid
 int dl_assemble(node *head, node **hidden_layers, int hidden_count, node *tail);
 
-// Frees node and linked nodes
+// Frees node and subsequent linked nodes
 int dl_free(node *head);
 
 // Serializes the network and stores it in a binary file

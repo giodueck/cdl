@@ -71,7 +71,8 @@ void matrix_print(matrix A, const char *end)
     }
     if (end == NULL)
         printf("\n");
-    else printf(end);
+    else
+        printf(end);
     fflush(stdout);
 }
 
@@ -184,11 +185,49 @@ matrix matrix_zero(matrix A)
     return A;
 }
 
-// Creates and returns a pointer to a node.
+// Creates and returns a pointer to a node
 // If prev is NULL, the node will be an input node, otherwise, the node pointed to by prev will point to this node as .next
+// type is either DL_INPUT, DL_HIDDEN or DL_OUTPUT
 node *dl_create_node(int type, int size, node *prev)
 {
+    if (type != DL_INPUT && prev == NULL)
+    {
+        fprintf(stderr, "dl_create_node: Previous layer not given.\n");
+        exit(1);
+    }
 
+    node *n = (node *)malloc(sizeof(node));
+    n->next = NULL; // will be overwritten if a node is created with n as prev
+    n->self = n;
+
+    switch (type)
+    {
+    case DL_INPUT:
+        n->weights = matrix_create(size, 1);
+        n->ca_weights = matrix_create(size, 1);
+        n->biases = matrix_create(size, 1);
+        n->ca_biases = matrix_create(size, 1);
+        n->last_activations = matrix_create(size, 1);
+        n->prev = NULL;
+        break;
+
+    case DL_HIDDEN:
+    case DL_OUTPUT:
+        n->weights = matrix_init_rand(matrix_create(size, prev->weights.height), DL_RANDMIN, DL_RANDMAX);
+        n->biases = matrix_init_rand(matrix_create(size, 1), DL_RANDMIN, DL_RANDMAX);
+        n->ca_weights = matrix_create(size, prev->weights.height);
+        n->ca_biases = matrix_create(size, 1);
+        n->last_activations = matrix_create(size, 1);
+        n->prev = prev;
+        prev->next = n->self;
+        break;
+
+    default:
+        fprintf(stderr, "dl_create_node: Invalid type.\n");
+        exit(1);
+    }
+
+    return n;
 }
 
 // Using an input column and the neural networks input node, calculate the result column
@@ -207,7 +246,7 @@ matrix dl_process(node *in_node, matrix input)
         fprintf(stderr, "dl_process: Input incompatible\n");
         return NULL_MATRIX;
     }
-    
+
     // If the current layer is not the input layer, do calculation, else pass on the input
     if (in_node->prev != NULL)
         interm = matrix_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
@@ -222,7 +261,8 @@ matrix dl_process(node *in_node, matrix input)
         // Recursion, go to next layer
         result = dl_process(in_node->next, interm);
         matrix_free(interm);
-    } else
+    }
+    else
     {
         // Base case: output layer
         return interm;
@@ -233,7 +273,7 @@ matrix dl_process(node *in_node, matrix input)
 
 // Checks if the network is valid
 //  0 -> not valid
-//  1 -> valid
+//  number of layers -> valid
 int dl_check(node *in_node)
 {
     node *this, *next;
@@ -241,28 +281,69 @@ int dl_check(node *in_node)
     this = in_node;
     next = in_node->next;
 
+    int i = 0;
+
     while (next != NULL)
     {
         if (next->weights.width != this->weights.height
-            || this->biases.height != this->weights.height
-            || this->biases.width != 1
-            || this->biases.height != this->last_activations.height)
+        || this->biases.height != this->weights.height
+        || this->biases.width != 1
+        || this->biases.height != this->last_activations.height
+        || this->ca_weights.height != this->weights.height
+        || this->ca_weights.width != this->weights.width
+        || this->ca_biases.height != this->biases.height
+        || this->ca_biases.width != this->biases.width)
         {
+            if (next->weights.width != this->weights.height)
+            {
+                fprintf(stderr, "dl_check: layer %d: weights matrix mismatch: %d height to %d width.\n", i, this->weights.height, next->weights.width);
+            }
+            if (this->biases.height != this->weights.height)
+            {
+                fprintf(stderr, "dl_check: layer %d: biases to weights matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->weights.height);
+            }
+            if (this->biases.width != 1)
+            {
+                fprintf(stderr, "dl_check: layer %d: biases matrix too wide: %d.\n", i, this->biases.width);
+            }
+            if (this->biases.height != this->last_activations.height)
+            {
+                fprintf(stderr, "dl_check: layer %d: biases to last_activations matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->last_activations.height);
+            }
+            if (this->ca_weights.height != this->weights.height)
+            {
+                fprintf(stderr, "dl_check: layer %d: ca_weights to weights matrix mismatch: %d height to %d height.\n", i, this->ca_weights.height, this->weights.height);
+            }
+            if (this->ca_weights.width != this->weights.width)
+            {
+                fprintf(stderr, "dl_check: layer %d: ca_weights to weights matrix mismatch: %d width to %d width.\n", i, this->ca_weights.width, this->weights.width);
+            }
+            if (this->ca_biases.height != this->biases.height)
+            {
+                fprintf(stderr, "dl_check: layer %d: ca_biases to biases matrix mismatch: %d height to %d height.\n", i, this->ca_biases.height, this->biases.height);
+            }
+            if (this->ca_biases.width != this->biases.width)
+            {
+                fprintf(stderr, "dl_check: layer %d: ca_biases to biases matrix mismatch: %d width to %d width.\n", i, this->ca_biases.width, this->biases.width);
+            }
+
             return 0;
-        } else
+        }
+        else
         {
             this = next;
             next = this->next;
+            i++;
         }
     }
 
-    return 1;
+    return i + 1;
 }
 
 // Assembles all the nodes into a linked structure usable by dl_process and dl_check using the head node
 // Calls dl_check to check for the result
 //  0 -> not valid
-//  1 -> valid
+//  number of layers -> valid
 int dl_assemble(node *head, node **hidden_layers, int hidden_count, node *tail)
 {
     head->prev = NULL;
@@ -271,26 +352,29 @@ int dl_assemble(node *head, node **hidden_layers, int hidden_count, node *tail)
     {
         head->next = tail;
         tail->prev = head;
-    } else for (int i = 0; i < hidden_count; i++)
-    {
-        // assign previous layer ->next and current layer ->prev
-        if (i == 0)
-        {
-            head->next = hidden_layers[i];
-            hidden_layers[i]->prev = head;
-        } else
-        {
-            hidden_layers[i - 1]->next = hidden_layers[i];
-            hidden_layers[i]->prev = hidden_layers[i - 1];
-        }
-
-        // assign tail ->prev and current layer ->next on last iteration
-        if (i == hidden_count - 1)
-        {
-            hidden_layers[i]->next = tail;
-            tail->prev = hidden_layers[i];
-        }
     }
+    else
+        for (int i = 0; i < hidden_count; i++)
+        {
+            // assign previous layer ->next and current layer ->prev
+            if (i == 0)
+            {
+                head->next = hidden_layers[i];
+                hidden_layers[i]->prev = head;
+            }
+            else
+            {
+                hidden_layers[i - 1]->next = hidden_layers[i];
+                hidden_layers[i]->prev = hidden_layers[i - 1];
+            }
+
+            // assign tail ->prev and current layer ->next on last iteration
+            if (i == hidden_count - 1)
+            {
+                hidden_layers[i]->next = tail;
+                tail->prev = hidden_layers[i];
+            }
+        }
 
     return dl_check(head);
 }
@@ -311,7 +395,8 @@ int dl_free(node *head)
     }
 
     // if allocated
-    if (head->self) free(head->self);
+    if (head->self)
+        free(head->self);
     return 0;
 }
 
@@ -326,7 +411,8 @@ void dl_dump(node *head, const char *filename)
 
     // count nodes
     node *aux = head;
-    while ((aux = aux->next)) node_count++;
+    while ((aux = aux->next))
+        node_count++;
     fwrite(&node_count, sizeof(unsigned int), 1, fd);
 
     aux = head;
@@ -355,8 +441,8 @@ node dl_load(const char *filename)
     FILE *fd = fopen(filename, "rb");
 
     fread(&node_count, sizeof(unsigned int), 1, fd);
-    
-    node *nodes = (node*) malloc(sizeof(node) * node_count);
+
+    node *nodes = (node *)malloc(sizeof(node) * node_count);
     int h, w;
     for (int i = 0; i < node_count; i++)
     {
@@ -366,7 +452,7 @@ node dl_load(const char *filename)
         // write weights matrix
         fread(&h, sizeof(int), 1, fd);
         fread(&w, sizeof(int), 1, fd);
-        
+
         nodes[i].weights = matrix_create(h, w);
         nodes[i].ca_weights = matrix_create(h, w);
         for (int r = 0; r < h; r++)
@@ -375,7 +461,7 @@ node dl_load(const char *filename)
         // write biases matrix
         fread(&h, sizeof(int), 1, fd);
         fread(&w, sizeof(int), 1, fd);
-        
+
         nodes[i].biases = matrix_create(h, w);
         nodes[i].ca_biases = matrix_create(h, w);
         nodes[i].last_activations = matrix_create(h, w);
@@ -383,7 +469,7 @@ node dl_load(const char *filename)
             fread(nodes[i].biases.matrix[r], sizeof(double), w, fd);
     }
 
-    node **hidden = (node**) malloc(sizeof(node*) * (node_count - 2));
+    node **hidden = (node **)malloc(sizeof(node *) * (node_count - 2));
     for (int i = 0; i < node_count - 2; i++)
     {
         hidden[i] = &nodes[i + 1];
@@ -416,7 +502,8 @@ double dl_cost(matrix result, matrix expected)
 // Applies the stored adjustments to the weights and biases
 void dl_adjust(node *head)
 {
-    if (head == NULL) return;
+    if (head == NULL)
+        return;
 
     if (head->prev) // not the input layer
     {
@@ -424,11 +511,11 @@ void dl_adjust(node *head)
         matrix_add(head->biases, head->ca_biases);
         matrix_zero(head->ca_weights);
         matrix_zero(head->ca_biases);
-    } else if (!dl_check(head))
+    }
+    else if (!dl_check(head))
     {
         fprintf(stderr, "dl_adjust: Adjustment matrices incompatible\n");
         return;
     }
     dl_adjust(head->next);
 }
-

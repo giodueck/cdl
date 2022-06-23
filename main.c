@@ -179,7 +179,7 @@ int main()
         images_v[i] = &images[i * 784];
     }
     srand(time(0));
-    shuffle_images(images_v, labels, count);
+    // shuffle_images(images_v, labels, count);
 
     // Create Neural Network
     node head, l1, l2, tail;
@@ -191,38 +191,76 @@ int main()
 
     int randmin = -1, randmax = 1;
 
+    // Net structure creation
+    int method = 3;
+
+    // Method 1: create nodes manually, then assemble into a net
     // These will be 0, but for consistency are added anyways
-    head.weights = matrix_create(n_inputs, 1);
-    head.ca_weights = matrix_create(n_inputs, 1);
-    head.biases = matrix_create(n_inputs, 1);
-    head.ca_biases = matrix_create(n_inputs, 1);
-    head.last_activations = matrix_create(n_inputs, 1);
-    head.self = NULL;
+    if (method == 1)
+    {
+        head.weights = matrix_create(n_inputs, 1);
+        head.ca_weights = matrix_create(n_inputs, 1);
+        head.biases = matrix_create(n_inputs, 1);
+        head.ca_biases = matrix_create(n_inputs, 1);
+        head.last_activations = matrix_create(n_inputs, 1);
+        head.self = NULL;
 
-    l1.weights = matrix_init_rand(matrix_create(l1_size, n_inputs), randmin, randmax);
-    l1.ca_weights = matrix_init_rand(matrix_create(l1_size, n_inputs), randmin, randmax);
-    l1.biases = matrix_init_rand(matrix_create(l1_size, 1), randmin, randmax);
-    l1.ca_biases = matrix_init_rand(matrix_create(l1_size, 1), randmin, randmax);
-    l1.last_activations = matrix_create(l1_size, 1);
-    l1.self = NULL;
-    hidden_layers[0] = &l1;
+        l1.weights = matrix_init_rand(matrix_create(l1_size, n_inputs), randmin, randmax);
+        l1.ca_weights = matrix_create(l1_size, n_inputs);
+        l1.biases = matrix_init_rand(matrix_create(l1_size, 1), randmin, randmax);
+        l1.ca_biases = matrix_create(l1_size, 1);
+        l1.last_activations = matrix_create(l1_size, 1);
+        l1.self = NULL;
+        hidden_layers[0] = &l1;
 
-    l2.weights = matrix_init_rand(matrix_create(l2_size, l1_size), randmin, randmax);
-    l2.ca_weights = matrix_init_rand(matrix_create(l2_size, l1_size), randmin, randmax);
-    l2.biases = matrix_init_rand(matrix_create(l2_size, 1), randmin, randmax);
-    l2.ca_biases = matrix_init_rand(matrix_create(l2_size, 1), randmin, randmax);
-    l2.last_activations = matrix_create(l2_size, 1);
-    l2.self = NULL;
-    hidden_layers[1] = &l2;
+        l2.weights = matrix_init_rand(matrix_create(l2_size, l1_size), randmin, randmax);
+        l2.ca_weights = matrix_create(l2_size, l1_size);
+        l2.biases = matrix_init_rand(matrix_create(l2_size, 1), randmin, randmax);
+        l2.ca_biases = matrix_create(l2_size, 1);
+        l2.last_activations = matrix_create(l2_size, 1);
+        l2.self = NULL;
+        hidden_layers[1] = &l2;
 
-    tail.weights = matrix_init_rand(matrix_create(n_outputs, l2_size), randmin, randmax);
-    tail.ca_weights = matrix_init_rand(matrix_create(n_outputs, l2_size), randmin, randmax);
-    tail.biases = matrix_init_rand(matrix_create(n_outputs, 1), randmin, randmax);
-    tail.ca_biases = matrix_init_rand(matrix_create(n_outputs, 1), randmin, randmax);
-    tail.last_activations = matrix_create(n_outputs, 1);
-    tail.self = NULL;
+        tail.weights = matrix_init_rand(matrix_create(n_outputs, l2_size), randmin, randmax);
+        tail.ca_weights = matrix_create(n_outputs, l2_size);
+        tail.biases = matrix_init_rand(matrix_create(n_outputs, 1), randmin, randmax);
+        tail.ca_biases = matrix_create(n_outputs, 1);
+        tail.last_activations = matrix_create(n_outputs, 1);
+        tail.self = NULL;
 
-    dl_assemble(&head, hidden_layers, 2, &tail);
+        dl_assemble(&head, hidden_layers, 2, &tail);
+    }
+
+    // Method 2: load nodes from file and assemble into a net
+    else if (method == 2)
+    {
+        head = dl_load("test.dld");
+    }
+
+    // Method 3: create nodes in sequence, assembling implicitly
+    else if (method == 3)
+    {
+        // Note: assigning a pointed-to value to a variable and not storing the pointer is dumb,
+        // because the value's actual location can't be accessed. Luckily an allocated node
+        // points to its own location for freeing, but all fixed size variables are lost, e.g.
+        // .next and .prev
+        node *head_, *l1_, *l2_, *tail_;
+
+        head_ = dl_create_node(DL_INPUT, n_inputs, NULL);
+        l1_ = dl_create_node(DL_HIDDEN, l1_size, head_->self);
+        l2_ = dl_create_node(DL_HIDDEN, l2_size, l1_->self);
+        tail_ = dl_create_node(DL_OUTPUT, n_outputs, l2_->self);
+        
+        if (dl_check(head_) < 4)
+        {
+            fprintf(stderr, "Method 3: %d layers found, %d expected.\n", dl_check(head_), 4);
+            return 0;
+        }
+
+        // This means all fixed size data, which will not be modified, is copied over to the variable head.
+        // Variable size data still is pointed to, and will be accessible without issues
+        head = *head_;
+    }
 
     // Create input vector from an image
     matrix input = matrix_create(n_inputs, 1);
@@ -241,10 +279,6 @@ int main()
         putchar('\n');
     }
     printf("Label: %d\n", labels[0]);
-
-    // loading test
-    dl_free(&head);
-    head = dl_load("test.dld");
 
     output = dl_process(&head, input);
     if (!output.matrix) exit(1);
@@ -273,13 +307,13 @@ int main()
     dl_dump(&head, "test.dld");
 
     dl_adjust(&head);
-    // Print activations
-    printf("1st layer activations:\n");
-    matrix_print(head.next->last_activations, "\n");
-    printf("2nd layer activations:\n");
-    matrix_print(head.next->next->last_activations, "\n");
-    printf("Output layer activations:\n");
-    matrix_print(head.next->next->next->last_activations, "\n");
+    // // Print activations
+    // printf("1st layer activations:\n");
+    // matrix_print(head.next->last_activations, "\n");
+    // printf("2nd layer activations:\n");
+    // matrix_print(head.next->next->last_activations, "\n");
+    // printf("Output layer activations:\n");
+    // matrix_print(head.next->next->next->last_activations, "\n");
 
     // Cleanup code
     matrix_free(input);
