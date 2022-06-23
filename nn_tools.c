@@ -230,6 +230,25 @@ node *dl_create_node(int type, int size, node *prev)
     return n;
 }
 
+// Creates n_layers nodes + 1 input node, and returns a pointer to this input node
+// n_layers does no include the input layer, but includes the output layer
+// sizes is an array of layer sizes, with n_layers amount of items and the last item being the output size
+node *dl_create(int n_inputs, int n_layers, int *sizes)
+{
+    node **nodes = (node **)malloc(sizeof(node*) * (n_layers + 1));
+
+    nodes[0] = dl_create_node(DL_INPUT, n_inputs, NULL);
+
+    int i;
+    for (i = 0; i < n_layers - 1; i++)
+    {
+        nodes[i + 1] = dl_create_node(DL_HIDDEN, sizes[i], nodes[i]);
+    }
+    nodes[i + 1] = dl_create_node(DL_OUTPUT, sizes[i], nodes[i]);
+
+    return nodes[0];
+}
+
 // Using an input column and the neural networks input node, calculate the result column
 matrix dl_process(node *in_node, matrix input)
 {

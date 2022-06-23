@@ -75,6 +75,11 @@ typedef struct node
 // type is either DL_INPUT, DL_HIDDEN or DL_OUTPUT
 node *dl_create_node(int type, int size, node *prev);
 
+// Creates n_layers nodes + 1 input node, and returns a pointer to this input node
+// n_layers does no include the input layer, but includes the output layer
+// sizes is an array of layer sizes, with n_layers amount of items and the last item being the output size
+node *dl_create(int n_inputs, int n_layers, int *sizes);
+
 // Using an input column and the neural networks input node, calculate the result column
 matrix dl_process(node *in_node, matrix input);
 

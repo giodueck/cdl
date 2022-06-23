@@ -122,6 +122,11 @@ double lerp(int n, int min, int max)
     return n / (double)(max - min);
 }
 
+void print_label(uint8_t *labels, int index)
+{
+    printf("Label: %d\n", labels[index]);
+}
+
 void print_image(uint8_t **images_v, uint8_t *labels, int count, int index)
 {
     while (index < 0)
@@ -145,7 +150,37 @@ void print_image(uint8_t **images_v, uint8_t *labels, int count, int index)
         }
         putchar('\n');
     }
-    printf("Label: %d\n", labels[index]);
+}
+
+void print_image_smaller(uint8_t **images_v, uint8_t *labels, int count, int index, int downscaling)
+{
+    if (downscaling <= 1)
+    {
+        print_image(images_v, labels, count, index);
+        return;
+    }
+
+    while (index < 0)
+    {
+        index += count;
+    }
+    
+    while (index >= count)
+    {
+        index -= count;
+    }
+
+    const char *shading = " .:$#";
+    for (int i = 0; i < 28; i += downscaling)
+    {
+        for (int j = 0; j < 28; j += downscaling)
+        {
+            // putchar(shading[(int) (4 * lerp(images[k * 784 + i * 28 + j], 0, 255))]);
+            putchar(shading[(int) (4 * lerp(images_v[index][i * 28 + j], 0, 255))]);
+            putchar(' ');
+        }
+        putchar('\n');
+    }
 }
 
 // Shuffles the images and labels vectors
@@ -192,7 +227,7 @@ int main()
     int randmin = -1, randmax = 1;
 
     // Net structure creation
-    int method = 3;
+    int method = 4;
 
     // Method 1: create nodes manually, then assemble into a net
     // These will be 0, but for consistency are added anyways
@@ -262,23 +297,26 @@ int main()
         head = *head_;
     }
 
+    else if (method == 4)
+    {
+        int sizes[3] = { l1_size, l2_size, n_outputs };
+        head = *dl_create(784, 3, sizes);
+
+        if (dl_check(&head) < 4)
+        {
+            fprintf(stderr, "Method 3: %d layers found, %d expected.\n", dl_check(&head), 4);
+            return 0;
+        }
+    }
+
     // Create input vector from an image
     matrix input = matrix_create(n_inputs, 1);
     matrix output;
     matrix expected = matrix_create(10, 0);
     int img_index = 0;
-    const char *shading = " .:$#";
-    for (int i = 0; i < 28; i++)
-    {
-        for (int j = 0; j < 28; j++)
-        {
-            input.matrix[i * 28 + j][0] = lerp(images_v[img_index][i * 28 + j], 0, 255);
-            putchar(shading[(int) (4 * input.matrix[i * 28 + j][0])]);
-            putchar(' ');
-        }
-        putchar('\n');
-    }
-    printf("Label: %d\n", labels[0]);
+    print_image(images_v, labels, count, img_index);
+    print_image_smaller(images_v, labels, count, img_index, 2);
+    print_label(labels, img_index);
 
     output = dl_process(&head, input);
     if (!output.matrix) exit(1);
