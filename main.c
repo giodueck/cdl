@@ -152,6 +152,7 @@ void print_image(uint8_t **images_v, uint8_t *labels, int count, int index)
     }
 }
 
+// Only prints every NxNth pixel, downscaling defines that N
 void print_image_smaller(uint8_t **images_v, uint8_t *labels, int count, int index, int downscaling)
 {
     if (downscaling <= 1)
@@ -226,6 +227,8 @@ int main()
 
     int randmin = -1, randmax = 1;
 
+    double alpha = 0.1;
+
     // Net structure creation
     int method = 4;
 
@@ -297,6 +300,7 @@ int main()
         head = *head_;
     }
 
+    // Method 4: automate method 3
     else if (method == 4)
     {
         int sizes[3] = { l1_size, l2_size, n_outputs };
@@ -304,7 +308,7 @@ int main()
 
         if (dl_check(&head) < 4)
         {
-            fprintf(stderr, "Method 3: %d layers found, %d expected.\n", dl_check(&head), 4);
+            fprintf(stderr, "Method 4: %d layers found, %d expected.\n", dl_check(&head), 4);
             return 0;
         }
     }
@@ -312,13 +316,14 @@ int main()
     // Create input vector from an image
     matrix input = matrix_create(n_inputs, 1);
     matrix output;
-    matrix expected = matrix_create(10, 0);
+    matrix expected = matrix_create(10, 1);
     int img_index = 0;
-    print_image(images_v, labels, count, img_index);
+    // print_image(images_v, labels, count, img_index);
     print_image_smaller(images_v, labels, count, img_index, 2);
     print_label(labels, img_index);
 
     output = dl_process(&head, input);
+    dl_backwards_pass(&head, expected, alpha);
     if (!output.matrix) exit(1);
     int choice;
     double confidence = 0, uncertainty = 0;
@@ -342,16 +347,44 @@ int main()
     expected.matrix[labels[img_index]][0] = 1;
     printf("Cost: %.4lf\n", dl_cost(output, expected));
 
-    dl_dump(&head, "test.dld");
+    // dl_dump(&head, "test.dld");
 
-    dl_adjust(&head);
-    // // Print activations
-    // printf("1st layer activations:\n");
-    // matrix_print(head.next->last_activations, "\n");
-    // printf("2nd layer activations:\n");
-    // matrix_print(head.next->next->last_activations, "\n");
-    // printf("Output layer activations:\n");
-    // matrix_print(head.next->next->next->last_activations, "\n");
+    // Train for this one image
+    for (int i = 0; i < 100; i++)
+    {
+        matrix_free(output);
+        output = dl_process(&head, input);
+        dl_backwards_pass(&head, expected, alpha);
+        dl_adjust(&head);
+    }
+
+    printf("\n ### Adjustments done ###\n");
+    
+    // Try the same image again to test backprop
+    matrix_free(output);
+    output = dl_process(&head, input);
+    dl_backwards_pass(&head, expected, alpha);
+    if (!output.matrix) exit(1);
+    confidence = 0, uncertainty = 0;
+    for (int i = 0; i < n_outputs; i++)
+    {
+        if (output.matrix[i][0] > confidence)
+        {
+            confidence = output.matrix[i][0];
+            choice = i;
+        }
+    }
+    for (int i = 0; i < n_outputs; i++)
+    {
+        if (output.matrix[i][0] > uncertainty && output.matrix[i][0] < confidence)
+            uncertainty = output.matrix[i][0];
+    }
+    
+    matrix_print(output, NULL);
+    printf("Choice: %d\nConfidence: %.2lf%%\nLabel: %d\n", choice, (confidence - uncertainty) * 100.0, labels[img_index]);
+
+    expected.matrix[labels[img_index]][0] = 1;
+    printf("Cost: %.4lf\n", dl_cost(output, expected));
 
     // Cleanup code
     matrix_free(input);

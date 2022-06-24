@@ -82,7 +82,7 @@ matrix matrix_mult(matrix A, matrix B)
 {
     if (A.width != B.height)
     {
-        fprintf(stderr, "matrix_mult: Row and column number incompatible\n");
+        fprintf(stderr, "matrix_mult: Column and row numbers incompatible: %d and %d.\n", A.width, B.height);
         return NULL_MATRIX;
     }
 
@@ -120,6 +120,22 @@ matrix matrix_add(matrix A, matrix B)
     return A;
 }
 
+// Substracts B from A, modifies and returns A
+matrix matrix_sub(matrix A, matrix B)
+{
+    if (A.height != B.height || A.width != B.width)
+    {
+        fprintf(stderr, "matrix_sub: Matrix dimension incompatible\n");
+        return NULL_MATRIX;
+    }
+
+    for (int i = 0; i < A.height; i++)
+        for (int j = 0; j < A.width; j++)
+            A.matrix[i][j] = A.matrix[i][j] - B.matrix[i][j];
+
+    return A;
+}
+
 // Applies sigmoid function to all values of a matrix, returns the same matrix
 // Specifically, this is the tanh function modified to output within (0, 1)
 matrix matrix_sigmoid(matrix A)
@@ -127,6 +143,20 @@ matrix matrix_sigmoid(matrix A)
     for (int i = 0; i < A.height; i++)
         for (int j = 0; j < A.width; j++)
             A.matrix[i][j] = (1 + tanh(A.matrix[i][j])) / 2;
+
+    return A;
+}
+
+// Applies the derivative of the sigmoid function used in matrix_sigmoid to all
+// values of a matrix, returns the same matrix
+matrix matrix_derivated_sigmoid(matrix A)
+{
+    for (int i = 0; i < A.height; i++)
+        for (int j = 0; j < A.width; j++)
+        {
+            double r = tanh(A.matrix[i][j]);
+            A.matrix[i][j] = (1 - r*r) / 2;
+        }
 
     return A;
 }
@@ -208,6 +238,7 @@ node *dl_create_node(int type, int size, node *prev)
         n->biases = matrix_create(size, 1);
         n->ca_biases = matrix_create(size, 1);
         n->last_activations = matrix_create(size, 1);
+        n->der_last_activations = matrix_create(size, 1);
         n->prev = NULL;
         break;
 
@@ -218,6 +249,7 @@ node *dl_create_node(int type, int size, node *prev)
         n->ca_weights = matrix_create(size, prev->weights.height);
         n->ca_biases = matrix_create(size, 1);
         n->last_activations = matrix_create(size, 1);
+        n->der_last_activations = matrix_create(size, 1);
         n->prev = prev;
         prev->next = n->self;
         break;
@@ -252,7 +284,7 @@ node *dl_create(int n_inputs, int n_layers, int *sizes)
 // Using an input column and the neural networks input node, calculate the result column
 matrix dl_process(node *in_node, matrix input)
 {
-    matrix result, interm;
+    matrix result, interm, der_interm;
 
     // Error checking
     if (in_node->prev == NULL && !dl_check(in_node))
@@ -268,7 +300,15 @@ matrix dl_process(node *in_node, matrix input)
 
     // If the current layer is not the input layer, do calculation, else pass on the input
     if (in_node->prev != NULL)
+    {
+        // interm is the vector of neuron activations for this layer,
+        // for the head it is the input, for any other layer, the result of the calculation
         interm = matrix_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
+
+        // der_interm, derivated intermediate, is used for backpropagation and not needed for the input layer
+        der_interm = matrix_derivated_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
+        matrix_init(in_node->der_last_activations, der_interm.matrix);
+    }
     else
         interm = matrix_copy(input);
 
@@ -311,7 +351,8 @@ int dl_check(node *in_node)
         || this->ca_weights.height != this->weights.height
         || this->ca_weights.width != this->weights.width
         || this->ca_biases.height != this->biases.height
-        || this->ca_biases.width != this->biases.width)
+        || this->ca_biases.width != this->biases.width
+        || this->der_last_activations.height != this->last_activations.height)
         {
             if (next->weights.width != this->weights.height)
             {
@@ -344,6 +385,10 @@ int dl_check(node *in_node)
             if (this->ca_biases.width != this->biases.width)
             {
                 fprintf(stderr, "dl_check: layer %d: ca_biases to biases matrix mismatch: %d width to %d width.\n", i, this->ca_biases.width, this->biases.width);
+            }
+            if (this->der_last_activations.height != this->last_activations.height)
+            {
+                fprintf(stderr, "dl_check: layer %d: last_activations and der_last_activations different: %d height to %d height.\n", i, this->last_activations.height, this->der_last_activations.height);
             }
 
             return 0;
@@ -506,12 +551,18 @@ node dl_load(const char *filename)
 // Cost = Sum((result - expected)^2)
 double dl_cost(matrix result, matrix expected)
 {
+    if (result.height != expected.height)
+    {
+        fprintf(stderr, "dl_cost: result and expected matrix heights differ: %d to %d.\n", result.height, expected.height);
+        return 0;
+    }
+
     double cost = 0;
     double difference;
 
     for (int i = 0; i < result.height; i++)
     {
-        difference = expected.matrix[i][0] - result.matrix[i][0];
+        difference = result.matrix[i][0] - expected.matrix[i][0];
         cost += difference * difference;
     }
 
@@ -526,8 +577,8 @@ void dl_adjust(node *head)
 
     if (head->prev) // not the input layer
     {
-        matrix_add(head->weights, head->ca_weights);
-        matrix_add(head->biases, head->ca_biases);
+        matrix_sub(head->weights, head->ca_weights);
+        matrix_sub(head->biases, head->ca_biases);
         matrix_zero(head->ca_weights);
         matrix_zero(head->ca_biases);
     }
@@ -537,4 +588,58 @@ void dl_adjust(node *head)
         return;
     }
     dl_adjust(head->next);
+}
+
+// Calculates all adjustments for a layer and recursively propagates to the previous node until the input node is reached
+void dl_backpropagate(node *n, matrix error, double alpha)
+{
+    // check if input layer
+    if (!n->prev)
+        return;
+    
+    matrix e = matrix_create(n->prev->last_activations.height, 1);
+    for (int i = 0; i < n->ca_weights.height; i++)
+    {
+        for (int j = 0; j < n->ca_weights.width; j++)
+        {
+            // strictly speaking, the error should be multiplied by 2, but that is a constant that can be part of alpha
+            n->ca_weights.matrix[i][j] = n->der_last_activations.matrix[i][0] * error.matrix[i][0] * n->prev->last_activations.matrix[j][0];
+            n->ca_weights.matrix[i][j] *= alpha;
+        }
+        n->ca_biases.matrix[i][0] = error.matrix[i][0] * alpha;
+    }
+
+    for (int j = 0; j < e.height; j++)
+    {
+        for (int i = 0; i < n->ca_weights.height; i++)
+        {
+            e.matrix[j][0] += n->der_last_activations.matrix[i][0] * error.matrix[i][0] * n->weights.matrix[i][j];
+        }
+    }
+
+    // backpropagate
+    dl_backpropagate(n->prev, e, alpha);
+    matrix_free(e);
+}
+
+// Starts the backwards pass and calculates adjustments to weights and biases for all layers but the input
+// expected is the expected output
+// alpha is the learning constant
+void dl_backwards_pass(node *head, matrix expected, double alpha)
+{
+    // look for tail
+    node *tail = head;
+    while (tail->next)
+        tail = tail->next;
+
+    if (tail->last_activations.height != expected.height)
+    {
+        fprintf(stderr, "dl_backwards_pass: output and expected matrix height differ: %d to %d.\n", tail->last_activations.height, expected.height);
+        exit(1);
+    }
+
+    // start backwards pass at tail
+    matrix error = matrix_sub(matrix_copy(tail->last_activations), expected);
+    dl_backpropagate(tail, error, alpha);
+    matrix_free(error);
 }

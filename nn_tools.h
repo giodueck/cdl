@@ -38,9 +38,16 @@ matrix matrix_mult(matrix A, matrix B);
 // Adds B to A, modifies and returns A
 matrix matrix_add(matrix A, matrix B);
 
+// Substracts B from A, modifies and returns A
+matrix matrix_sub(matrix A, matrix B);
+
 // Applies sigmoid function to all values of a matrix, returns the same matrix
-// Specifically, this is the logistic function
+// Specifically, this is the tanh function modified to output within (0, 1)
 matrix matrix_sigmoid(matrix A);
+
+// Applies the derivative of the sigmoid function used in matrix_sigmoid to all
+// values of a matrix, returns the same matrix
+matrix matrix_derivated_sigmoid(matrix A);
 
 // Fills a matrix with random data, returns the same matrix
 matrix matrix_init_rand(matrix A, double min, double max);
@@ -63,7 +70,7 @@ typedef struct node
     // Neurons are an abstraction, one row per neuron
     matrix weights, biases;
     // need to keep these for backpropagation and actually training the network
-    matrix last_activations;
+    matrix der_last_activations, last_activations;
     // cumulative adjustments to the weights and biases
     matrix ca_weights, ca_biases;
     // NULL if created, ptr if allocated
@@ -108,5 +115,10 @@ double dl_cost(matrix result, matrix expected);
 
 // Applies the stored adjustments to the weights and biases
 void dl_adjust(node *head);
+
+// Starts the backwards pass and calculates adjustments to weights and biases for all layers but the input
+// expected is the expected output
+// alpha is the learning constant
+void dl_backwards_pass(node *head, matrix expected, double alpha);
 
 #endif // NN_TOOLS_H
