@@ -104,6 +104,20 @@ matrix matrix_mult(matrix A, matrix B)
     return C;
 }
 
+// Multiplies all elements of A by n, returns the same matrix
+matrix matrix_scalar_mult(matrix A, double n)
+{
+    for (int i = 0; i < A.height; i++)
+    {
+        for (int j = 0; j < A.width; j++)
+        {
+            A.matrix[i][j] *= n;
+        }
+    }
+
+    return A;
+}
+
 // Adds B to A, modifies and returns A
 matrix matrix_add(matrix A, matrix B)
 {
@@ -115,7 +129,7 @@ matrix matrix_add(matrix A, matrix B)
 
     for (int i = 0; i < A.height; i++)
         for (int j = 0; j < A.width; j++)
-            A.matrix[i][j] = A.matrix[i][j] + B.matrix[i][j];
+            A.matrix[i][j] += B.matrix[i][j];
 
     return A;
 }
@@ -131,7 +145,7 @@ matrix matrix_sub(matrix A, matrix B)
 
     for (int i = 0; i < A.height; i++)
         for (int j = 0; j < A.width; j++)
-            A.matrix[i][j] = A.matrix[i][j] - B.matrix[i][j];
+            A.matrix[i][j] -= B.matrix[i][j];
 
     return A;
 }
@@ -229,6 +243,7 @@ node *dl_create_node(int type, int size, node *prev)
     node *n = (node *)malloc(sizeof(node));
     n->next = NULL; // will be overwritten if a node is created with n as prev
     n->self = n;
+    n->n_ca = 0;
 
     switch (type)
     {
@@ -499,7 +514,7 @@ void dl_dump(node *head, const char *filename)
 }
 
 // Loads a network from a file
-node dl_load(const char *filename)
+node *dl_load(const char *filename)
 {
     unsigned int node_count;
     FILE *fd = fopen(filename, "rb");
@@ -512,6 +527,8 @@ node dl_load(const char *filename)
     {
         // Since only one malloc is used, it only needs to be freed once for the input node
         nodes[i].self = NULL;
+
+        nodes[i].n_ca = 0;
 
         // write weights matrix
         fread(&h, sizeof(int), 1, fd);
@@ -529,6 +546,7 @@ node dl_load(const char *filename)
         nodes[i].biases = matrix_create(h, w);
         nodes[i].ca_biases = matrix_create(h, w);
         nodes[i].last_activations = matrix_create(h, w);
+        nodes[i].der_last_activations = matrix_create(h, w);
         for (int r = 0; r < h; r++)
             fread(nodes[i].biases.matrix[r], sizeof(double), w, fd);
     }
@@ -542,9 +560,8 @@ node dl_load(const char *filename)
     free(hidden);
 
     fclose(fd);
-    node ret = nodes[0];
-    ret.self = nodes;
-    return ret;
+    nodes[0].self = nodes;
+    return &nodes[0];
 }
 
 // Calculates the cost for the result
@@ -575,13 +592,17 @@ void dl_adjust(node *head)
     if (head == NULL)
         return;
 
-    if (head->prev) // not the input layer
+    if (head->prev && head->n_ca) // not the input layer and adjustments to make
     {
-        matrix_sub(head->weights, head->ca_weights);
-        matrix_sub(head->biases, head->ca_biases);
+        matrix_sub(head->weights, matrix_scalar_mult(head->ca_weights, (double) 1 / head->n_ca));
+        matrix_sub(head->biases, matrix_scalar_mult(head->ca_biases, (double) 1 / head->n_ca));
+        // matrix_sub(head->weights, head->ca_weights);
+        // matrix_sub(head->biases, head->ca_biases);
         matrix_zero(head->ca_weights);
         matrix_zero(head->ca_biases);
+        head->n_ca = 0;
     }
+    // check the network once when at the input layer
     else if (!dl_check(head))
     {
         fprintf(stderr, "dl_adjust: Adjustment matrices incompatible\n");
@@ -590,36 +611,61 @@ void dl_adjust(node *head)
     dl_adjust(head->next);
 }
 
+matrix dl_log_loss(matrix output, matrix expected)
+{
+    matrix loss = matrix_create(output.height, 1);
+    for (int i = 0; i < output.height; i++)
+    {
+        loss.matrix[i][0] = - output.matrix[i][0] * log(1e-15 + expected.matrix[i][0]);
+    }
+    
+    return loss;
+}
+
+matrix dl_mse_loss(matrix output, matrix expected)
+{
+    matrix loss = matrix_create(output.height, 1);
+    for (int i = 0; i < output.height; i++)
+    {
+        loss.matrix[i][0] = 2 * (output.matrix[i][0] - expected.matrix[i][0]);
+    }
+    
+    return loss;
+}
+
 // Calculates all adjustments for a layer and recursively propagates to the previous node until the input node is reached
-void dl_backpropagate(node *n, matrix error, double alpha)
+void dl_backpropagate(node *n, matrix loss, double alpha)
 {
     // check if input layer
     if (!n->prev)
         return;
     
-    matrix e = matrix_create(n->prev->last_activations.height, 1);
+    matrix new_loss = matrix_create(n->prev->last_activations.height, 1);
     for (int i = 0; i < n->ca_weights.height; i++)
     {
         for (int j = 0; j < n->ca_weights.width; j++)
         {
-            // strictly speaking, the error should be multiplied by 2, but that is a constant that can be part of alpha
-            n->ca_weights.matrix[i][j] = n->der_last_activations.matrix[i][0] * error.matrix[i][0] * n->prev->last_activations.matrix[j][0];
-            n->ca_weights.matrix[i][j] *= alpha;
+            // strictly speaking, the loss should be multiplied by 2, but that is a constant that can be part of alpha
+            n->ca_weights.matrix[i][j] += n->der_last_activations.matrix[i][0]
+                                        * loss.matrix[i][0]
+                                        * n->prev->last_activations.matrix[j][0]
+                                        * alpha;
         }
-        n->ca_biases.matrix[i][0] = error.matrix[i][0] * alpha;
+        n->ca_biases.matrix[i][0] += loss.matrix[i][0] * alpha;
     }
 
-    for (int j = 0; j < e.height; j++)
+    for (int j = 0; j < new_loss.height; j++)
     {
         for (int i = 0; i < n->ca_weights.height; i++)
         {
-            e.matrix[j][0] += n->der_last_activations.matrix[i][0] * error.matrix[i][0] * n->weights.matrix[i][j];
+            new_loss.matrix[j][0] += n->der_last_activations.matrix[i][0] * loss.matrix[i][0] * n->weights.matrix[i][j];
         }
     }
 
     // backpropagate
-    dl_backpropagate(n->prev, e, alpha);
-    matrix_free(e);
+    n->n_ca++;
+    dl_backpropagate(n->prev, new_loss, alpha);
+    matrix_free(new_loss);
 }
 
 // Starts the backwards pass and calculates adjustments to weights and biases for all layers but the input
@@ -639,7 +685,7 @@ void dl_backwards_pass(node *head, matrix expected, double alpha)
     }
 
     // start backwards pass at tail
-    matrix error = matrix_sub(matrix_copy(tail->last_activations), expected);
-    dl_backpropagate(tail, error, alpha);
-    matrix_free(error);
+    matrix loss = dl_mse_loss(tail->last_activations, expected);
+    dl_backpropagate(tail, loss, alpha);
+    matrix_free(loss);
 }

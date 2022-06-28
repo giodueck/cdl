@@ -35,6 +35,9 @@ void matrix_print(matrix A, const char *end);
 // Rows in A and columns in B have to match
 matrix matrix_mult(matrix A, matrix B);
 
+// Multiplies all elements of A by n, returns the same matrix
+matrix matrix_scalar_mult(matrix A, double n);
+
 // Adds B to A, modifies and returns A
 matrix matrix_add(matrix A, matrix B);
 
@@ -73,6 +76,8 @@ typedef struct node
     matrix der_last_activations, last_activations;
     // cumulative adjustments to the weights and biases
     matrix ca_weights, ca_biases;
+    // Amount of adjustments
+    unsigned int n_ca;
     // NULL if created, ptr if allocated
     struct node* self;
 } node;
@@ -108,7 +113,7 @@ int dl_free(node *head);
 void dl_dump(node *head, const char *filename);
 
 // Loads a network from a file
-node dl_load(const char *filename);
+node *dl_load(const char *filename);
 
 // Calculates the cost for the result
 double dl_cost(matrix result, matrix expected);

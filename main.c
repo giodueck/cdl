@@ -3,7 +3,6 @@
 #include <time.h>
 #include "nn_tools.h"
 #include "swap.h"
-#include <errno.h>
 
 int get_len(const char *filename)
 {
@@ -209,25 +208,31 @@ int main()
     uint8_t *images = get_images("mnist/train-images.idx3-ubyte");
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
 
+    // Load testing data
+    uint8_t *t_labels = get_labels("mnist/t10k-labels.idx1-ubyte");
+    int t_count = get_len("mnist/t10k-labels.idx1-ubyte");
+    uint8_t *t_images = get_images("mnist/t10k-images.idx3-ubyte");
+    uint8_t **t_images_v = (uint8_t**) malloc(sizeof(uint8_t*) * t_count);
+
     // Every *images_v points to one array of 784 pixels, or one image
     for (int i = 0; i < count; i++)
-    {
         images_v[i] = &images[i * 784];
-    }
+    for (int i = 0; i < t_count; i++)
+        t_images_v[i] = &t_images[i * 784];
+
     srand(time(0));
-    // shuffle_images(images_v, labels, count);
 
     // Create Neural Network
     node head, l1, l2, tail;
     node *hidden_layers[2];
     int n_inputs = 784;
-    int l1_size = 24;
-    int l2_size = 24;
+    int l1_size = 256;
+    int l2_size = 64;
     int n_outputs = 10;
 
     int randmin = -1, randmax = 1;
 
-    double alpha = 0.1;
+    double alpha = 0.15;
 
     // Net structure creation
     int method = 4;
@@ -272,7 +277,7 @@ int main()
     // Method 2: load nodes from file and assemble into a net
     else if (method == 2)
     {
-        head = dl_load("test.dld");
+        head = *dl_load("test.dld");
     }
 
     // Method 3: create nodes in sequence, assembling implicitly
@@ -313,82 +318,193 @@ int main()
         }
     }
 
-    // Create input vector from an image
+    // Train the model several times over shuffled versions of the same dataset
+    int runs = 10;
+    double avg_cost;
+
+    // Train in batches of random images
+    int batch_size = 100;
+
+    // Store average cost over batches and limit how many are processed
+    int batches = 600;
+    double *costs;
+    if (batches < 0 || batches >= count / batch_size)
+    {
+        batches = count / batch_size;
+    }
+    costs = (double*) malloc(sizeof(double) * batches);
+    for (int i = 0; i < batches; i++)
+        costs[i] = 0;
+
+    // Actual training
     matrix input = matrix_create(n_inputs, 1);
     matrix output;
     matrix expected = matrix_create(10, 1);
-    int img_index = 0;
-    // print_image(images_v, labels, count, img_index);
-    print_image_smaller(images_v, labels, count, img_index, 2);
-    print_label(labels, img_index);
 
-    output = dl_process(&head, input);
-    dl_backwards_pass(&head, expected, alpha);
-    if (!output.matrix) exit(1);
+    // verification
+    int correct_answers;
     int choice;
-    double confidence = 0, uncertainty = 0;
-    for (int i = 0; i < n_outputs; i++)
-    {
-        if (output.matrix[i][0] > confidence)
+    double confidence = 0;
+
+    printf("%d training runs.\n", runs);
+    for (int run = 0; run < runs; run++)
+    {    
+        shuffle_images(images_v, labels, count);
+        avg_cost = 0;
+        correct_answers = 0;
+
+        printf("Training run %d...", run);
+        fflush(stdout);
+        for (int i = 0; i < batches; i++)
         {
-            confidence = output.matrix[i][0];
-            choice = i;
+            for (int j = 0; j < batch_size; j++)
+            {
+                // input and expected result creation
+                for (int k = 0; k < n_inputs; k++)
+                {
+                    input.matrix[k][0] = (double) images_v[i * batch_size + j][k];
+                }
+                expected = matrix_zero(expected);
+                expected.matrix[labels[i * batch_size + j]][0] = 1;
+
+                // Process and store adjustments
+                output = dl_process(&head, input);
+                dl_backwards_pass(&head, expected, alpha);
+                costs[i] += dl_cost(output, expected);
+
+                // dbg: testing correctness
+                // verification
+                choice = 0;
+                for (int m = 0; m < output.height; m++)
+                {
+                    if (output.matrix[m][0] > confidence)
+                    {
+                        confidence = output.matrix[m][0];
+                        choice = m;
+                    }
+                }
+                confidence = 0;
+        
+                // counting
+                correct_answers += (choice == labels[i * batch_size + j]);
+                // printf("  Ch: %d\t  L: %d\t Co: %lf\n", choice, labels[i * batch_size + j], costs[i] / (j + 1));
+                // matrix_print(output, NULL);
+                // dl_adjust(&head);
+
+                matrix_free(output);
+            }
+            costs[i] /= batch_size;
+            // matrix_print(head.next->ca_biases, NULL);
+            dl_adjust(&head);
+
+            // printf("R: %d\tB: %d/%d\tC: %lf\tA: %.2lf%%\n", run, i + 1, batches, costs[i], (double) correct_answers / batch_size * 100);
+            // correct_answers = 0;
+
+            // costs[i] = 0;
+            // i--;
+            // printf("Enter to train more...\n");
+            // while (getchar() != '\n');
         }
+        
+        for (int l = 0; l < batches; l++)
+        {
+            avg_cost += costs[l];
+        }
+        avg_cost /= batches;
+        printf("\rAvg cost over run %d: %.4lf\tAcc: %.2lf%%\n", run, avg_cost, (double) correct_answers / (batch_size * batches) * 100);
     }
-    for (int i = 0; i < n_outputs; i++)
+
+    // Save model
+    dl_dump(&head, "test.dld");
+
+    // Testing against new data
+    printf("Testing with new data...");
+    fflush(stdout);
+    avg_cost = 0;
+    correct_answers = 0;
+    for (int i = 0; i < t_count; i++)
     {
-        if (output.matrix[i][0] > uncertainty && output.matrix[i][0] < confidence)
-            uncertainty = output.matrix[i][0];
-    }
-    
-    matrix_print(output, NULL);
-    printf("Choice: %d\nConfidence: %.2lf%%\nLabel: %d\n", choice, (confidence - uncertainty) * 100.0, labels[img_index]);
+        confidence = 0;
 
-    expected.matrix[labels[img_index]][0] = 1;
-    printf("Cost: %.4lf\n", dl_cost(output, expected));
+        // input creation
+        for (int k = 0; k < n_inputs; k++)
+        {
+            input.matrix[k][0] = (double) t_images_v[i][k];
+        }
 
-    // dl_dump(&head, "test.dld");
+        expected = matrix_zero(expected);
+        expected.matrix[t_labels[i]][0] = 1;
 
-    // Train for this one image
-    for (int i = 0; i < 100; i++)
-    {
-        matrix_free(output);
+        // processing
         output = dl_process(&head, input);
-        dl_backwards_pass(&head, expected, alpha);
-        dl_adjust(&head);
-    }
 
-    printf("\n ### Adjustments done ###\n");
-    
-    // Try the same image again to test backprop
-    matrix_free(output);
-    output = dl_process(&head, input);
-    dl_backwards_pass(&head, expected, alpha);
-    if (!output.matrix) exit(1);
-    confidence = 0, uncertainty = 0;
-    for (int i = 0; i < n_outputs; i++)
-    {
-        if (output.matrix[i][0] > confidence)
+        // verification
+        for (int j = 0; j < n_outputs; j++)
         {
-            confidence = output.matrix[i][0];
-            choice = i;
+            if (output.matrix[j][0] > confidence)
+            {
+                confidence = output.matrix[j][0];
+                choice = j;
+            }
         }
-    }
-    for (int i = 0; i < n_outputs; i++)
-    {
-        if (output.matrix[i][0] > uncertainty && output.matrix[i][0] < confidence)
-            uncertainty = output.matrix[i][0];
-    }
-    
-    matrix_print(output, NULL);
-    printf("Choice: %d\nConfidence: %.2lf%%\nLabel: %d\n", choice, (confidence - uncertainty) * 100.0, labels[img_index]);
+        
+        // counting
+        // // debug
+        // print_image_smaller(t_images_v, t_labels, t_count, i, 2);
+        // print_label(t_labels, i);
+        // printf("Choice: %d\tCost: %.4lf\n", choice, dl_cost(output, expected));
+        // matrix_print(output, NULL);
+        correct_answers += (choice == t_labels[i]);
+        avg_cost += dl_cost(output, expected);
 
-    expected.matrix[labels[img_index]][0] = 1;
-    printf("Cost: %.4lf\n", dl_cost(output, expected));
+        matrix_free(output);
+    }
+    avg_cost /= t_count;
+    printf("\nCorrect answers: %d/%d = %.2f%%\tAvg cost: %.4lf\n", correct_answers, t_count, (double) correct_answers / t_count * 100.0, avg_cost);
+
+
+    // // Test on 1 image
+    // // Create input vector from an image
+    // int img_index = 0;
+    // input = matrix_create(n_inputs, 1);
+    // for (int i = 0; i < n_inputs; i++)
+    // {
+    //     input.matrix[i][0] = (double) t_images_v[img_index][i];
+    // }
+    
+    // // print_image(t_images_v, t_labels, count, img_index);
+    // print_image_smaller(t_images_v, t_labels, count, img_index, 2);
+    // print_label(t_labels, img_index);
+
+    // output = dl_process(&head, input);
+    // dl_backwards_pass(&head, expected, alpha);
+    // if (!output.matrix) exit(1);
+    // int choice;
+    // double confidence = 0, uncertainty = 0;
+    // for (int i = 0; i < n_outputs; i++)
+    // {
+    //     if (output.matrix[i][0] > confidence)
+    //     {
+    //         confidence = output.matrix[i][0];
+    //         choice = i;
+    //     }
+    // }
+    // for (int i = 0; i < n_outputs; i++)
+    // {
+    //     if (output.matrix[i][0] > uncertainty && output.matrix[i][0] < confidence)
+    //         uncertainty = output.matrix[i][0];
+    // }
+    
+    // matrix_print(output, NULL);
+    // printf("Choice: %d\nConfidence: %.2lf%%\nLabel: %d\n", choice, (confidence - uncertainty) * 100.0, t_labels[img_index]);
+
+    // matrix_zero(expected);
+    // expected.matrix[t_labels[img_index]][0] = 1;
+    // printf("Cost: %.4lf\n", dl_cost(output, expected));
+
 
     // Cleanup code
     matrix_free(input);
-    matrix_free(output);
     matrix_free(expected);
 
     dl_free(&head);
@@ -396,5 +512,8 @@ int main()
     free(labels);
     free(images);
     free(images_v);
+    free(t_labels);
+    free(t_images);
+    free(t_images_v);
     return 0;
 }
