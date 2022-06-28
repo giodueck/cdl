@@ -323,6 +323,7 @@ matrix dl_process(node *in_node, matrix input)
         // der_interm, derivated intermediate, is used for backpropagation and not needed for the input layer
         der_interm = matrix_derivated_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
         matrix_init(in_node->der_last_activations, der_interm.matrix);
+        matrix_free(der_interm);
     }
     else
         interm = matrix_copy(input);
@@ -466,6 +467,7 @@ int dl_free(node *head)
     matrix_free(head->weights);
     matrix_free(head->ca_weights);
     matrix_free(head->last_activations);
+    matrix_free(head->der_last_activations);
 
     if (head->next) // if not tail
     {
