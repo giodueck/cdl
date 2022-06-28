@@ -4,6 +4,9 @@
 #include "nn_tools.h"
 #include "swap.h"
 
+// range of values in the dataset
+const int minval = 0, maxval = 255;
+
 int get_len(const char *filename)
 {
     int32_t magic, len;
@@ -143,8 +146,7 @@ void print_image(uint8_t **images_v, uint8_t *labels, int count, int index)
     {
         for (int j = 0; j < 28; j++)
         {
-            // putchar(shading[(int) (4 * lerp(images[k * 784 + i * 28 + j], 0, 255))]);
-            putchar(shading[(int) (4 * lerp(images_v[index][i * 28 + j], 0, 255))]);
+            putchar(shading[(int) (4 * lerp(images_v[index][i * 28 + j], minval, maxval))]);
             putchar(' ');
         }
         putchar('\n');
@@ -175,8 +177,7 @@ void print_image_smaller(uint8_t **images_v, uint8_t *labels, int count, int ind
     {
         for (int j = 0; j < 28; j += downscaling)
         {
-            // putchar(shading[(int) (4 * lerp(images[k * 784 + i * 28 + j], 0, 255))]);
-            putchar(shading[(int) (4 * lerp(images_v[index][i * 28 + j], 0, 255))]);
+            putchar(shading[(int) (4 * lerp(images_v[index][i * 28 + j], minval, maxval))]);
             putchar(' ');
         }
         putchar('\n');
@@ -222,17 +223,27 @@ int main()
 
     srand(time(0));
 
+    // Some constants
+
+    // range for initial values
+    const int randmin = -1, randmax = 1;
+    // learning rate
+    const double alpha = 0.15;
+
     // Create Neural Network
-    node head, l1, l2, tail;
+    node head;
+    const int n_inputs = 784;
+    const int n_outputs = 10;
+
+    // for methods 1 & 3
+    node l1, l2, tail;
     node *hidden_layers[2];
-    int n_inputs = 784;
-    int l1_size = 256;
-    int l2_size = 64;
-    int n_outputs = 10;
+    const int l1_size = 256;
+    const int l2_size = 64;
 
-    int randmin = -1, randmax = 1;
-
-    double alpha = 0.15;
+    // for method 4
+    int n_layers = 3;
+    int sizes[3] = { l1_size, l2_size, n_outputs };
 
     // Net structure creation
     int method = 4;
@@ -308,8 +319,7 @@ int main()
     // Method 4: automate method 3
     else if (method == 4)
     {
-        int sizes[3] = { l1_size, l2_size, n_outputs };
-        head = *dl_create(784, 3, sizes);
+        head = *dl_create(n_inputs, n_layers, sizes);
 
         if (dl_check(&head) < 4)
         {
@@ -387,23 +397,11 @@ int main()
         
                 // counting
                 correct_answers += (choice == labels[i * batch_size + j]);
-                // printf("  Ch: %d\t  L: %d\t Co: %lf\n", choice, labels[i * batch_size + j], costs[i] / (j + 1));
-                // matrix_print(output, NULL);
-                // dl_adjust(&head);
 
                 matrix_free(output);
             }
             costs[i] /= batch_size;
-            // matrix_print(head.next->ca_biases, NULL);
             dl_adjust(&head);
-
-            // printf("R: %d\tB: %d/%d\tC: %lf\tA: %.2lf%%\n", run, i + 1, batches, costs[i], (double) correct_answers / batch_size * 100);
-            // correct_answers = 0;
-
-            // costs[i] = 0;
-            // i--;
-            // printf("Enter to train more...\n");
-            // while (getchar() != '\n');
         }
         
         for (int l = 0; l < batches; l++)
@@ -449,11 +447,6 @@ int main()
         }
         
         // counting
-        // // debug
-        // print_image_smaller(t_images_v, t_labels, t_count, i, 2);
-        // print_label(t_labels, i);
-        // printf("Choice: %d\tCost: %.4lf\n", choice, dl_cost(output, expected));
-        // matrix_print(output, NULL);
         correct_answers += (choice == t_labels[i]);
         avg_cost += dl_cost(output, expected);
 
@@ -462,48 +455,7 @@ int main()
     avg_cost /= t_count;
     printf("\nCorrect answers: %d/%d = %.2f%%\tAvg cost: %.4lf\n", correct_answers, t_count, (double) correct_answers / t_count * 100.0, avg_cost);
 
-
-    // // Test on 1 image
-    // // Create input vector from an image
-    // int img_index = 0;
-    // input = matrix_create(n_inputs, 1);
-    // for (int i = 0; i < n_inputs; i++)
-    // {
-    //     input.matrix[i][0] = (double) t_images_v[img_index][i];
-    // }
-    
-    // // print_image(t_images_v, t_labels, count, img_index);
-    // print_image_smaller(t_images_v, t_labels, count, img_index, 2);
-    // print_label(t_labels, img_index);
-
-    // output = dl_process(&head, input);
-    // dl_backwards_pass(&head, expected, alpha);
-    // if (!output.matrix) exit(1);
-    // int choice;
-    // double confidence = 0, uncertainty = 0;
-    // for (int i = 0; i < n_outputs; i++)
-    // {
-    //     if (output.matrix[i][0] > confidence)
-    //     {
-    //         confidence = output.matrix[i][0];
-    //         choice = i;
-    //     }
-    // }
-    // for (int i = 0; i < n_outputs; i++)
-    // {
-    //     if (output.matrix[i][0] > uncertainty && output.matrix[i][0] < confidence)
-    //         uncertainty = output.matrix[i][0];
-    // }
-    
-    // matrix_print(output, NULL);
-    // printf("Choice: %d\nConfidence: %.2lf%%\nLabel: %d\n", choice, (confidence - uncertainty) * 100.0, t_labels[img_index]);
-
-    // matrix_zero(expected);
-    // expected.matrix[t_labels[img_index]][0] = 1;
-    // printf("Cost: %.4lf\n", dl_cost(output, expected));
-
-
-    // Cleanup code
+    // Clean up
     matrix_free(input);
     matrix_free(expected);
 
