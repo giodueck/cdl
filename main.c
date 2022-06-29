@@ -212,7 +212,8 @@ int main(int argc, char **argv)
     int *sizes = (int*) malloc(sizeof(int));
     const int n_inputs = 784;
     const int n_outputs = 10;
-    char filename[FILENAME_MAX] = "test.dld";
+    char filename[FILENAME_MAX];
+    sprintf(filename, "dl-%d.dld", time(0));
 
     int c;
     extern int optopt;
@@ -220,11 +221,22 @@ int main(int argc, char **argv)
     extern int opterr;
     opterr = 0; // to suppress getopt error messages
 
-    while ((c = getopt(argc, argv, "h:f:")) != -1)
+    /*
+    Args:
+        Implemented:
+            -l <size>: specify hidden layer size, can specify multiple in order
+            -f <filename>: specify file name to save model to
+
+        Not implemented:
+            -h: help menu
+            -a: learning rate
+    */
+
+    while ((c = getopt(argc, argv, "l:f:")) != -1)
     {
         switch (c)
         {
-        case 'h':
+        case 'l':
             // store hidden layer and expand sizes vector to store output layer
             sizes[n_layers - 1] = atoi(optarg);
             sizes = (int*) realloc(sizes, sizeof(int) * ++n_layers);
@@ -234,7 +246,7 @@ int main(int argc, char **argv)
             strcat(filename, ".dld");
             break;
         case '?':
-            if (optopt == 'h')
+            if (optopt == 'l' || optopt == 'f')
                 fprintf(stderr, "Option -%c requires an argument\n", optopt);
             else if (isprint(c))
                 fprintf(stderr, "Unknown option '-%c'\n", optopt);
