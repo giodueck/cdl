@@ -204,6 +204,76 @@ void shuffle_images(uint8_t **images_v, uint8_t *labels, int len)
     }
 }
 
+void test_model(node *head)
+{
+    // Load testing data
+    uint8_t *t_labels = get_labels("mnist/t10k-labels.idx1-ubyte");
+    int t_count = get_len("mnist/t10k-labels.idx1-ubyte");
+    uint8_t *t_images = get_images("mnist/t10k-images.idx3-ubyte");
+    uint8_t **t_images_v = (uint8_t**) malloc(sizeof(uint8_t*) * t_count);
+
+    for (int i = 0; i < t_count; i++)
+        t_images_v[i] = &t_images[i * 784];
+
+    int n_inputs = head->biases.height;
+    node *aux = head;
+    while (aux->next)
+        aux = aux->next;
+    int n_outputs = aux->biases.height;
+    
+    // Testing against new data
+    printf("Testing with new data...");
+    fflush(stdout);
+    double avg_cost = 0;
+    int correct_answers = 0;
+    double confidence;
+    int choice;
+    matrix input = matrix_create(n_inputs, 1);
+    matrix expected = matrix_create(n_outputs, 1);
+    matrix output;
+    for (int i = 0; i < t_count; i++)
+    {
+        confidence = 0;
+
+        // input creation
+        for (int k = 0; k < n_inputs; k++)
+        {
+            input.matrix[k][0] = (double) t_images_v[i][k];
+        }
+
+        expected = matrix_zero(expected);
+        expected.matrix[t_labels[i]][0] = 1;
+
+        // processing
+        output = dl_process(head, input);
+
+        // verification
+        for (int j = 0; j < n_outputs; j++)
+        {
+            if (output.matrix[j][0] > confidence)
+            {
+                confidence = output.matrix[j][0];
+                choice = j;
+            }
+        }
+        
+        // counting
+        correct_answers += (choice == t_labels[i]);
+        avg_cost += dl_cost(output, expected);
+
+        matrix_free(output);
+    }
+    avg_cost /= t_count;
+    printf("\rCorrect answers: %d/%d = %.2f%%\tAvg cost: %.4lf\n", correct_answers, t_count, (double) correct_answers / t_count * 100.0, avg_cost);
+
+    matrix_free(input);
+    matrix_free(expected);
+    matrix_free(output);
+    free(t_labels);
+    free(t_images);
+    free(t_images_v);
+}
+
 int main(int argc, char **argv)
 {
     // Handle args
@@ -221,18 +291,25 @@ int main(int argc, char **argv)
     extern int opterr;
     opterr = 0; // to suppress getopt error messages
 
+    char testflag = 0;
+
     /*
+    Files: invent some magic number to put in front of the file, so I can identify valid files
+    C  D  L  D
+    67 68 76 67
+
     Args:
         Implemented:
             -l <size>: specify hidden layer size, can specify multiple in order
             -f <filename>: specify file name to save model to
+            -t <filename>: specify file to test model
 
         Not implemented:
             -h: help menu
             -a: learning rate
     */
 
-    while ((c = getopt(argc, argv, "l:f:")) != -1)
+    while ((c = getopt(argc, argv, "l:f:t:")) != -1)
     {
         switch (c)
         {
@@ -245,10 +322,15 @@ int main(int argc, char **argv)
             strcpy(filename, optarg);
             strcat(filename, ".dld");
             break;
+        case 't':
+            testflag = 1;
+            strcpy(filename, optarg);
+            break;
+        case ':':
+            fprintf(stderr, "Option -%c requires an argument\n", optopt);
+            return 1;
         case '?':
-            if (optopt == 'l' || optopt == 'f')
-                fprintf(stderr, "Option -%c requires an argument\n", optopt);
-            else if (isprint(c))
+            if (isprint(c))
                 fprintf(stderr, "Unknown option '-%c'\n", optopt);
             else
                 fprintf(stderr, "Unknown option character '\\x%x'.\n", optopt);
@@ -257,6 +339,22 @@ int main(int argc, char **argv)
             printf("%d %c\n", c, optopt);
             abort();
         }
+    }
+
+    // Only test a model
+    if (testflag)
+    {
+        free(sizes);
+        node *head = dl_load(filename);
+        if (head)
+        {
+            dl_print_structure(head);
+            test_model(head);
+            dl_dump(head, filename);
+            dl_free(head);
+        }
+
+        return 0;
     }
 
     // last layer will be output
@@ -268,18 +366,10 @@ int main(int argc, char **argv)
     uint8_t *images = get_images("mnist/train-images.idx3-ubyte");
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
 
-    // Load testing data
-    uint8_t *t_labels = get_labels("mnist/t10k-labels.idx1-ubyte");
-    int t_count = get_len("mnist/t10k-labels.idx1-ubyte");
-    uint8_t *t_images = get_images("mnist/t10k-images.idx3-ubyte");
-    uint8_t **t_images_v = (uint8_t**) malloc(sizeof(uint8_t*) * t_count);
-
     // Every *images_v points to one array of 784 pixels, or one image
     for (int i = 0; i < count; i++)
         images_v[i] = &images[i * 784];
-    for (int i = 0; i < t_count; i++)
-        t_images_v[i] = &t_images[i * 784];
-
+    
     srand(time(0));
 
     // Some constants
@@ -387,46 +477,9 @@ int main(int argc, char **argv)
     // Save model
     dl_dump(head, filename);
 
-    // Testing against new data
-    printf("Testing with new data...");
-    fflush(stdout);
-    avg_cost = 0;
-    correct_answers = 0;
-    for (int i = 0; i < t_count; i++)
-    {
-        confidence = 0;
-
-        // input creation
-        for (int k = 0; k < n_inputs; k++)
-        {
-            input.matrix[k][0] = (double) t_images_v[i][k];
-        }
-
-        expected = matrix_zero(expected);
-        expected.matrix[t_labels[i]][0] = 1;
-
-        // processing
-        output = dl_process(head, input);
-
-        // verification
-        for (int j = 0; j < n_outputs; j++)
-        {
-            if (output.matrix[j][0] > confidence)
-            {
-                confidence = output.matrix[j][0];
-                choice = j;
-            }
-        }
-        
-        // counting
-        correct_answers += (choice == t_labels[i]);
-        avg_cost += dl_cost(output, expected);
-
-        matrix_free(output);
-    }
-    avg_cost /= t_count;
-    printf("\nCorrect answers: %d/%d = %.2f%%\tAvg cost: %.4lf\n", correct_answers, t_count, (double) correct_answers / t_count * 100.0, avg_cost);
-
+    // Test model
+    test_model(head);
+    
     // Clean up
     matrix_free(input);
     matrix_free(expected);
@@ -437,8 +490,5 @@ int main(int argc, char **argv)
     free(labels);
     free(images);
     free(images_v);
-    free(t_labels);
-    free(t_images);
-    free(t_images_v);
     return 0;
 }

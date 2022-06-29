@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <time.h>
+#include <string.h>
 
 #include "nn_tools.h"
 
@@ -476,7 +477,9 @@ void dl_dump(node *head, const char *filename)
         return;
 
     unsigned int node_count = 1;
+    const char* magic = "CDLD";
     FILE *fd = fopen(filename, "wb");
+    fwrite(magic, 1, 4, fd);
 
     // count nodes
     node *aux = head;
@@ -504,10 +507,20 @@ void dl_dump(node *head, const char *filename)
 }
 
 // Loads a network from a file
+// If the magic number "CDLD" is not present, the return is NULL
 node *dl_load(const char *filename)
 {
     unsigned int node_count;
+    char magic[5];
     FILE *fd = fopen(filename, "rb");
+    fread(magic, 1, 4, fd);
+    magic[4] = '\0';
+    if (strcmp(magic, "CDLD") != 0)
+    {
+        fprintf(stderr, "dl_load: file '%s' not in the right format.\n", filename);
+        fclose(fd);
+        return NULL;
+    }
 
     fread(&node_count, sizeof(unsigned int), 1, fd);
 

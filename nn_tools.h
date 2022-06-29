@@ -117,6 +117,7 @@ int dl_free(node *head);
 void dl_dump(node *head, const char *filename);
 
 // Loads a network from a file
+// If the magic number "CDLD" is not present, the return is NULL
 node *dl_load(const char *filename);
 
 // Using an input column and the neural networks input node, calculate the result column
