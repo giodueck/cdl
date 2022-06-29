@@ -19,7 +19,7 @@ Initially the program is limited to hard-coded structures, specifically a 2-hidd
 I plan to add command-line parameters to customize the model trained, and several other utilities to test existing networks.
 
 To compile I used\
-```gcc -o cdl -g test_dl.c nn_tools.c -lm -O2```\
+```gcc -o cdl -g test_dl.c nn_tools.c getopt.c -lm -O2```\
 but the flags `-g` and `-O2` are optional, for debugging and optimizations respectively.
 
 # Samples
