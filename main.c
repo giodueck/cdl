@@ -284,7 +284,15 @@ int main(int argc, char **argv)
     const int n_outputs = 10;
     char filename[FILENAME_MAX];
     sprintf(filename, "dl-%d.dld", time(0));
-
+    // range for initial values
+    const int randmin = -1, randmax = 1;
+    // learning rate
+    double alpha = 0.15;
+    // Train the model several times over shuffled versions of the same dataset
+    int runs = 10;
+    // Train in batches of random images
+    int batch_size = 100;
+    
     int c;
     extern int optopt;
     extern char *optarg;
@@ -303,13 +311,15 @@ int main(int argc, char **argv)
             -l <size>: specify hidden layer size, can specify multiple in order
             -f <filename>: specify file name to save model to
             -t <filename>: specify file to test model
+            -a: specify the learning rate
+            -r: specify how many training runs to do
+            -b: specify batch size
 
         Not implemented:
             -h: help menu
-            -a: learning rate
     */
 
-    while ((c = getopt(argc, argv, "l:f:t:")) != -1)
+    while ((c = getopt(argc, argv, "l:f:t:a:r:b:")) != -1)
     {
         switch (c)
         {
@@ -325,6 +335,15 @@ int main(int argc, char **argv)
         case 't':
             testflag = 1;
             strcpy(filename, optarg);
+            break;
+        case 'a':
+            alpha = atof(optarg);
+            break;
+        case 'r':
+            runs = abs(atoi(optarg));
+            break;
+        case 'b':
+            batch_size = abs(atoi(optarg));
             break;
         case ':':
             fprintf(stderr, "Option -%c requires an argument\n", optopt);
@@ -372,13 +391,6 @@ int main(int argc, char **argv)
     
     srand(time(0));
 
-    // Some constants
-
-    // range for initial values
-    const int randmin = -1, randmax = 1;
-    // learning rate
-    const double alpha = 0.15;
-
     // Create Neural Network
     node *head;
 
@@ -390,20 +402,10 @@ int main(int argc, char **argv)
     }
     dl_print_structure(head);
 
-    // Train the model several times over shuffled versions of the same dataset
-    int runs = 10;
-    double avg_cost;
-
-    // Train in batches of random images
-    int batch_size = 100;
-
     // Store average cost over batches and limit how many are processed
-    int batches = 600;
+    double avg_cost;
+    int batches = count / batch_size;
     double *costs;
-    if (batches < 0 || batches >= count / batch_size)
-    {
-        batches = count / batch_size;
-    }
     costs = (double*) malloc(sizeof(double) * batches);
     for (int i = 0; i < batches; i++)
         costs[i] = 0;
@@ -418,7 +420,7 @@ int main(int argc, char **argv)
     int choice;
     double confidence = 0;
 
-    printf("%d training runs.\n", runs);
+    printf("%d training runs in batches of %d pictures.\nLearning rate is %lf.\n", runs, batch_size, alpha);
     for (int run = 0; run < runs; run++)
     {    
         shuffle_images(images_v, labels, count);
