@@ -24,6 +24,6 @@ but the flags `-g` and `-O2` are optional, for debugging and optimizations respe
 
 # Samples
 
-The program dumps a serialized version of the network into a file, two such networks are available in the samples directory, with their name suggesting how many layers (including output) there are and how big each one is.
+The program dumps a serialized version of the network into a file, two such networks are available in the samples directory, with their name suggesting how many layers (including input and output) there are and how big each one is.
 
 A function in `nn_tools.c` is provided for loading this model into a program: `dl_load()`.

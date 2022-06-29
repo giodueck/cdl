@@ -92,13 +92,17 @@ node *dl_create_node(int type, int size, node *prev);
 // sizes is an array of layer sizes, with n_layers amount of items and the last item being the output size
 node *dl_create(int n_inputs, int n_layers, int *sizes);
 
-// Using an input column and the neural networks input node, calculate the result column
-matrix dl_process(node *in_node, matrix input);
-
 // Checks if the network is valid
 //  0 -> not valid
 //  number of layers -> valid
 int dl_check(node *in_node);
+
+// Prints the net's structure to the console
+void dl_print_structure(node *head);
+
+// Prints structure into buf up to len - 1
+// Returns number of characters written
+int dl_structure_str(node *head, char *buf, int len);
 
 // Assembles all the nodes into a linked structure usable by nn_process and nn_check using the head node
 // Calls nn_check to check for the result
@@ -115,7 +119,11 @@ void dl_dump(node *head, const char *filename);
 // Loads a network from a file
 node *dl_load(const char *filename);
 
+// Using an input column and the neural networks input node, calculate the result column
+matrix dl_process(node *in_node, matrix input);
+
 // Calculates the cost for the result
+// Cost = Sum((result - expected)^2)
 double dl_cost(matrix result, matrix expected);
 
 // Applies the stored adjustments to the weights and biases

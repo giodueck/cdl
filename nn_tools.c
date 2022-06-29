@@ -296,56 +296,6 @@ node *dl_create(int n_inputs, int n_layers, int *sizes)
     return nodes[0];
 }
 
-// Using an input column and the neural networks input node, calculate the result column
-matrix dl_process(node *in_node, matrix input)
-{
-    matrix result, interm, der_interm;
-
-    // Error checking
-    if (in_node->prev == NULL && !dl_check(in_node))
-    {
-        fprintf(stderr, "dl_process: Check failed\n");
-        return NULL_MATRIX;
-    }
-    if (in_node->prev == NULL && (input.width != 1 || input.height != in_node->weights.height))
-    {
-        fprintf(stderr, "dl_process: Input incompatible\n");
-        return NULL_MATRIX;
-    }
-
-    // If the current layer is not the input layer, do calculation, else pass on the input
-    if (in_node->prev != NULL)
-    {
-        // interm is the vector of neuron activations for this layer,
-        // for the head it is the input, for any other layer, the result of the calculation
-        interm = matrix_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
-
-        // der_interm, derivated intermediate, is used for backpropagation and not needed for the input layer
-        der_interm = matrix_derivated_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
-        matrix_init(in_node->der_last_activations, der_interm.matrix);
-        matrix_free(der_interm);
-    }
-    else
-        interm = matrix_copy(input);
-
-    // interm is the vector of neuron activations for this layer, for the head it is the input, for any other layer, the result of the calculation
-    matrix_init(in_node->last_activations, interm.matrix);
-
-    if (in_node->next != NULL)
-    {
-        // Recursion, go to next layer
-        result = dl_process(in_node->next, interm);
-        matrix_free(interm);
-    }
-    else
-    {
-        // Base case: output layer
-        return interm;
-    }
-
-    return result;
-}
-
 // Checks if the network is valid
 //  0 -> not valid
 //  number of layers -> valid
@@ -418,6 +368,44 @@ int dl_check(node *in_node)
     }
 
     return i + 1;
+}
+
+// Prints the net's structure to the console
+void dl_print_structure(node *head)
+{
+    printf("Structure: %d", head->biases.height);
+    
+    while ((head = head->next)) // go to next layer until it is null
+    {
+        printf("-%d", head->biases.height);
+    }
+    printf("\n");
+}
+
+// Prints structure into buf up to len - 1
+// Returns number of characters written
+int dl_structure_str(node *head, char *buf, int len)
+{
+    char auxbuf[BUFSIZ];
+    sprintf(auxbuf, "%d", head->biases.height);
+    while ((head = head->next)) // go to next layer until it is null
+    {
+        sprintf(auxbuf, "%s-%d", auxbuf, head->biases.height);
+    }
+
+    int i;
+    for (i = 0; i < len; i++)
+    {
+        buf[i] = auxbuf[i];
+        if (i == len - 1)
+        {
+            buf[i] = '\0';
+            break;
+        }
+        if (buf[i] == '\0')
+            break;
+    }
+    return i;
 }
 
 // Assembles all the nodes into a linked structure usable by dl_process and dl_check using the head node
@@ -564,6 +552,56 @@ node *dl_load(const char *filename)
     fclose(fd);
     nodes[0].self = nodes;
     return &nodes[0];
+}
+
+// Using an input column and the neural networks input node, calculate the result column
+matrix dl_process(node *in_node, matrix input)
+{
+    matrix result, interm, der_interm;
+
+    // Error checking
+    if (in_node->prev == NULL && !dl_check(in_node))
+    {
+        fprintf(stderr, "dl_process: Check failed\n");
+        return NULL_MATRIX;
+    }
+    if (in_node->prev == NULL && (input.width != 1 || input.height != in_node->weights.height))
+    {
+        fprintf(stderr, "dl_process: Input incompatible\n");
+        return NULL_MATRIX;
+    }
+
+    // If the current layer is not the input layer, do calculation, else pass on the input
+    if (in_node->prev != NULL)
+    {
+        // interm is the vector of neuron activations for this layer,
+        // for the head it is the input, for any other layer, the result of the calculation
+        interm = matrix_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
+
+        // der_interm, derivated intermediate, is used for backpropagation and not needed for the input layer
+        der_interm = matrix_derivated_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
+        matrix_init(in_node->der_last_activations, der_interm.matrix);
+        matrix_free(der_interm);
+    }
+    else
+        interm = matrix_copy(input);
+
+    // interm is the vector of neuron activations for this layer, for the head it is the input, for any other layer, the result of the calculation
+    matrix_init(in_node->last_activations, interm.matrix);
+
+    if (in_node->next != NULL)
+    {
+        // Recursion, go to next layer
+        result = dl_process(in_node->next, interm);
+        matrix_free(interm);
+    }
+    else
+    {
+        // Base case: output layer
+        return interm;
+    }
+
+    return result;
 }
 
 // Calculates the cost for the result

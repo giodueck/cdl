@@ -231,102 +231,21 @@ int main()
     const double alpha = 0.15;
 
     // Create Neural Network
-    node head;
+    node *head;
     const int n_inputs = 784;
     const int n_outputs = 10;
-
-    // for methods 1 & 3
-    node l1, l2, tail;
-    node *hidden_layers[2];
-    const int l1_size = 256;
-    const int l2_size = 64;
-
-    // for method 4
     int n_layers = 3;
-    int sizes[3] = { l1_size, l2_size, n_outputs };
+    int sizes[3] = { 100, 50, n_outputs };
 
-    // Net structure creation
-    int method = 4;
-
-    // Method 1: create nodes manually, then assemble into a net
-    // These will be 0, but for consistency are added anyways
-    if (method == 1)
+    head = dl_create(n_inputs, n_layers, sizes);
+    if (dl_check(head) < n_layers + 1)
     {
-        head.weights = matrix_create(n_inputs, 1);
-        head.ca_weights = matrix_create(n_inputs, 1);
-        head.biases = matrix_create(n_inputs, 1);
-        head.ca_biases = matrix_create(n_inputs, 1);
-        head.last_activations = matrix_create(n_inputs, 1);
-        head.self = NULL;
-
-        l1.weights = matrix_init_rand(matrix_create(l1_size, n_inputs), randmin, randmax);
-        l1.ca_weights = matrix_create(l1_size, n_inputs);
-        l1.biases = matrix_init_rand(matrix_create(l1_size, 1), randmin, randmax);
-        l1.ca_biases = matrix_create(l1_size, 1);
-        l1.last_activations = matrix_create(l1_size, 1);
-        l1.self = NULL;
-        hidden_layers[0] = &l1;
-
-        l2.weights = matrix_init_rand(matrix_create(l2_size, l1_size), randmin, randmax);
-        l2.ca_weights = matrix_create(l2_size, l1_size);
-        l2.biases = matrix_init_rand(matrix_create(l2_size, 1), randmin, randmax);
-        l2.ca_biases = matrix_create(l2_size, 1);
-        l2.last_activations = matrix_create(l2_size, 1);
-        l2.self = NULL;
-        hidden_layers[1] = &l2;
-
-        tail.weights = matrix_init_rand(matrix_create(n_outputs, l2_size), randmin, randmax);
-        tail.ca_weights = matrix_create(n_outputs, l2_size);
-        tail.biases = matrix_init_rand(matrix_create(n_outputs, 1), randmin, randmax);
-        tail.ca_biases = matrix_create(n_outputs, 1);
-        tail.last_activations = matrix_create(n_outputs, 1);
-        tail.self = NULL;
-
-        dl_assemble(&head, hidden_layers, 2, &tail);
+        fprintf(stderr, "Network creation: %d layers found, %d expected.\n", dl_check(head), n_layers + 1);
+        return 0;
     }
-
-    // Method 2: load nodes from file and assemble into a net
-    else if (method == 2)
-    {
-        head = *dl_load("test.dld");
-    }
-
-    // Method 3: create nodes in sequence, assembling implicitly
-    else if (method == 3)
-    {
-        // Note: assigning a pointed-to value to a variable and not storing the pointer is dumb,
-        // because the value's actual location can't be accessed. Luckily an allocated node
-        // points to its own location for freeing, but all fixed size variables are lost, e.g.
-        // .next and .prev
-        node *head_, *l1_, *l2_, *tail_;
-
-        head_ = dl_create_node(DL_INPUT, n_inputs, NULL);
-        l1_ = dl_create_node(DL_HIDDEN, l1_size, head_->self);
-        l2_ = dl_create_node(DL_HIDDEN, l2_size, l1_->self);
-        tail_ = dl_create_node(DL_OUTPUT, n_outputs, l2_->self);
-        
-        if (dl_check(head_) < 4)
-        {
-            fprintf(stderr, "Method 3: %d layers found, %d expected.\n", dl_check(head_), 4);
-            return 0;
-        }
-
-        // This means all fixed size data, which will not be modified, is copied over to the variable head.
-        // Variable size data still is pointed to, and will be accessible without issues
-        head = *head_;
-    }
-
-    // Method 4: automate method 3
-    else if (method == 4)
-    {
-        head = *dl_create(n_inputs, n_layers, sizes);
-
-        if (dl_check(&head) < 4)
-        {
-            fprintf(stderr, "Method 4: %d layers found, %d expected.\n", dl_check(&head), 4);
-            return 0;
-        }
-    }
+    dl_print_structure(head);
+    char buf[15];
+    printf("Chars written: %d: %s\n", dl_structure_str(head, buf, 15), buf);
 
     // Train the model several times over shuffled versions of the same dataset
     int runs = 10;
@@ -378,8 +297,8 @@ int main()
                 expected.matrix[labels[i * batch_size + j]][0] = 1;
 
                 // Process and store adjustments
-                output = dl_process(&head, input);
-                dl_backwards_pass(&head, expected, alpha);
+                output = dl_process(head, input);
+                dl_backwards_pass(head, expected, alpha);
                 costs[i] += dl_cost(output, expected);
 
                 // dbg: testing correctness
@@ -401,7 +320,7 @@ int main()
                 matrix_free(output);
             }
             costs[i] /= batch_size;
-            dl_adjust(&head);
+            dl_adjust(head);
         }
         
         for (int l = 0; l < batches; l++)
@@ -413,7 +332,7 @@ int main()
     }
 
     // Save model
-    dl_dump(&head, "test.dld");
+    dl_dump(head, "test.dld");
 
     // Testing against new data
     printf("Testing with new data...");
@@ -434,7 +353,7 @@ int main()
         expected.matrix[t_labels[i]][0] = 1;
 
         // processing
-        output = dl_process(&head, input);
+        output = dl_process(head, input);
 
         // verification
         for (int j = 0; j < n_outputs; j++)
@@ -459,7 +378,7 @@ int main()
     matrix_free(input);
     matrix_free(expected);
 
-    dl_free(&head);
+    dl_free(head);
 
     free(labels);
     free(images);
