@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <ctype.h>
+#include <string.h>
 #include "nn_tools.h"
 #include "swap.h"
+#include "getopt.h"
 
 // range of values in the dataset
 const int minval = 0, maxval = 255;
@@ -201,8 +204,52 @@ void shuffle_images(uint8_t **images_v, uint8_t *labels, int len)
     }
 }
 
-int main()
+int main(int argc, char **argv)
 {
+    // Handle args
+    int n_layers = 1;
+    // reserve one space for output layer
+    int *sizes = (int*) malloc(sizeof(int));
+    const int n_inputs = 784;
+    const int n_outputs = 10;
+    char filename[FILENAME_MAX] = "test.dld";
+
+    int c;
+    extern int optopt;
+    extern char *optarg;
+    extern int opterr;
+    opterr = 0; // to suppress getopt error messages
+
+    while ((c = getopt(argc, argv, "h:f:")) != -1)
+    {
+        switch (c)
+        {
+        case 'h':
+            // store hidden layer and expand sizes vector to store output layer
+            sizes[n_layers - 1] = atoi(optarg);
+            sizes = (int*) realloc(sizes, sizeof(int) * ++n_layers);
+            break;
+        case 'f':
+            strcpy(filename, optarg);
+            strcat(filename, ".dld");
+            break;
+        case '?':
+            if (optopt == 'h')
+                fprintf(stderr, "Option -%c requires an argument\n", optopt);
+            else if (isprint(c))
+                fprintf(stderr, "Unknown option '-%c'\n", optopt);
+            else
+                fprintf(stderr, "Unknown option character '\\x%x'.\n", optopt);
+            return 1;
+        default:
+            printf("%d %c\n", c, optopt);
+            abort();
+        }
+    }
+
+    // last layer will be output
+    sizes[n_layers - 1] = n_outputs;
+
     // Load training data
     uint8_t *labels = get_labels("mnist/train-labels.idx1-ubyte");
     int count = get_len("mnist/train-labels.idx1-ubyte");
@@ -232,10 +279,6 @@ int main()
 
     // Create Neural Network
     node *head;
-    const int n_inputs = 784;
-    const int n_outputs = 10;
-    int n_layers = 3;
-    int sizes[3] = { 100, 50, n_outputs };
 
     head = dl_create(n_inputs, n_layers, sizes);
     if (dl_check(head) < n_layers + 1)
@@ -244,8 +287,6 @@ int main()
         return 0;
     }
     dl_print_structure(head);
-    char buf[15];
-    printf("Chars written: %d: %s\n", dl_structure_str(head, buf, 15), buf);
 
     // Train the model several times over shuffled versions of the same dataset
     int runs = 10;
@@ -332,7 +373,7 @@ int main()
     }
 
     // Save model
-    dl_dump(head, "test.dld");
+    dl_dump(head, filename);
 
     // Testing against new data
     printf("Testing with new data...");
@@ -380,6 +421,7 @@ int main()
 
     dl_free(head);
 
+    free(sizes);
     free(labels);
     free(images);
     free(images_v);
