@@ -513,6 +513,11 @@ node *dl_load(const char *filename)
     unsigned int node_count;
     char magic[5];
     FILE *fd = fopen(filename, "rb");
+    if (!fd)
+    {
+        perror("dl_load");
+        return NULL;
+    }
     fread(magic, 1, 4, fd);
     magic[4] = '\0';
     if (strcmp(magic, "CDLD") != 0)
