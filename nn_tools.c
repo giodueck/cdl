@@ -323,39 +323,39 @@ int dl_check(node *in_node)
         {
             if (next->weights.width != this->weights.height)
             {
-                fprintf(stderr, "dl_check: layer %d: weights matrix mismatch: %d height to %d width.\n", i, this->weights.height, next->weights.width);
+                fprintf(stderr, "dl_check: Layer %d: weights matrix mismatch: %d height to %d width.\n", i, this->weights.height, next->weights.width);
             }
             if (this->biases.height != this->weights.height)
             {
-                fprintf(stderr, "dl_check: layer %d: biases to weights matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->weights.height);
+                fprintf(stderr, "dl_check: Layer %d: biases to weights matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->weights.height);
             }
             if (this->biases.width != 1)
             {
-                fprintf(stderr, "dl_check: layer %d: biases matrix too wide: %d.\n", i, this->biases.width);
+                fprintf(stderr, "dl_check: Layer %d: biases matrix too wide: %d.\n", i, this->biases.width);
             }
             if (this->biases.height != this->last_activations.height)
             {
-                fprintf(stderr, "dl_check: layer %d: biases to last_activations matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->last_activations.height);
+                fprintf(stderr, "dl_check: Layer %d: biases to last_activations matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->last_activations.height);
             }
             if (this->ca_weights.height != this->weights.height)
             {
-                fprintf(stderr, "dl_check: layer %d: ca_weights to weights matrix mismatch: %d height to %d height.\n", i, this->ca_weights.height, this->weights.height);
+                fprintf(stderr, "dl_check: Layer %d: ca_weights to weights matrix mismatch: %d height to %d height.\n", i, this->ca_weights.height, this->weights.height);
             }
             if (this->ca_weights.width != this->weights.width)
             {
-                fprintf(stderr, "dl_check: layer %d: ca_weights to weights matrix mismatch: %d width to %d width.\n", i, this->ca_weights.width, this->weights.width);
+                fprintf(stderr, "dl_check: Layer %d: ca_weights to weights matrix mismatch: %d width to %d width.\n", i, this->ca_weights.width, this->weights.width);
             }
             if (this->ca_biases.height != this->biases.height)
             {
-                fprintf(stderr, "dl_check: layer %d: ca_biases to biases matrix mismatch: %d height to %d height.\n", i, this->ca_biases.height, this->biases.height);
+                fprintf(stderr, "dl_check: Layer %d: ca_biases to biases matrix mismatch: %d height to %d height.\n", i, this->ca_biases.height, this->biases.height);
             }
             if (this->ca_biases.width != this->biases.width)
             {
-                fprintf(stderr, "dl_check: layer %d: ca_biases to biases matrix mismatch: %d width to %d width.\n", i, this->ca_biases.width, this->biases.width);
+                fprintf(stderr, "dl_check: Layer %d: ca_biases to biases matrix mismatch: %d width to %d width.\n", i, this->ca_biases.width, this->biases.width);
             }
             if (this->der_last_activations.height != this->last_activations.height)
             {
-                fprintf(stderr, "dl_check: layer %d: last_activations and der_last_activations different: %d height to %d height.\n", i, this->last_activations.height, this->der_last_activations.height);
+                fprintf(stderr, "dl_check: Layer %d: last_activations and der_last_activations different: %d height to %d height.\n", i, this->last_activations.height, this->der_last_activations.height);
             }
 
             return 0;
@@ -522,7 +522,7 @@ node *dl_load(const char *filename)
     magic[4] = '\0';
     if (strcmp(magic, "CDLD") != 0)
     {
-        fprintf(stderr, "dl_load: file '%s' not in the right format.\n", filename);
+        fprintf(stderr, "dl_load: File '%s' not in the right format.\n", filename);
         fclose(fd);
         return NULL;
     }
@@ -738,7 +738,7 @@ void dl_backwards_pass(node *head, matrix expected, double alpha)
 
     if (tail->last_activations.height != expected.height)
     {
-        fprintf(stderr, "dl_backwards_pass: output and expected matrix height differ: %d to %d.\n", tail->last_activations.height, expected.height);
+        fprintf(stderr, "dl_backwards_pass: Output and expected matrix height differ: %d to %d.\n", tail->last_activations.height, expected.height);
         exit(1);
     }
 

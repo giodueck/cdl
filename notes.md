@@ -42,6 +42,8 @@ The input layer points to the first hidden layer, which points to the next, and 
 
 ##### File format
 
+Magic number first: 4 bytes, equal to ASCII "CDLD"
+
 Binary. Nodes can be read in order and assembled on loading, since pointers will need to be recalculated.
 
 An unsigned integer determines the number of nodes to be read.\
