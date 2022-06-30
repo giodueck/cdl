@@ -20,7 +20,7 @@ typedef struct
     double **matrix;   // malloced matrix
 } matrix;
 
-#define NULL_MATRIX (matrix) { .width = 0, .height = 0, .matrix = NULL }
+#define NULL_MATRIX (matrix) { .height = 0, .width = 0, .matrix = NULL }
 
 // Returns 0 matrix struct with width number of columns and height number of rows
 matrix matrix_create(int height, int width);

@@ -9,7 +9,7 @@
 // Returns 0 matrix struct with width number of columns and height number of rows
 matrix matrix_create(int height, int width)
 {
-    matrix A = (matrix){.width = width, .height = height, .matrix = NULL};
+    matrix A = (matrix){ .height = height, .width = width, .matrix = NULL };
 
     A.matrix = (double **)malloc(sizeof(double *) * A.height);
     if (!A.matrix)
@@ -302,68 +302,68 @@ node *dl_create(int n_inputs, int n_layers, int *sizes)
 //  number of layers -> valid
 int dl_check(node *in_node)
 {
-    node *this, *next;
+    node *current, *next;
 
-    this = in_node;
+    current = in_node;
     next = in_node->next;
 
     int i = 0;
 
     while (next != NULL)
     {
-        if (next->weights.width != this->weights.height
-        || this->biases.height != this->weights.height
-        || this->biases.width != 1
-        || this->biases.height != this->last_activations.height
-        || this->ca_weights.height != this->weights.height
-        || this->ca_weights.width != this->weights.width
-        || this->ca_biases.height != this->biases.height
-        || this->ca_biases.width != this->biases.width
-        || this->der_last_activations.height != this->last_activations.height)
+        if (next->weights.width != current->weights.height
+        || current->biases.height != current->weights.height
+        || current->biases.width != 1
+        || current->biases.height != current->last_activations.height
+        || current->ca_weights.height != current->weights.height
+        || current->ca_weights.width != current->weights.width
+        || current->ca_biases.height != current->biases.height
+        || current->ca_biases.width != current->biases.width
+        || current->der_last_activations.height != current->last_activations.height)
         {
-            if (next->weights.width != this->weights.height)
+            if (next->weights.width != current->weights.height)
             {
-                fprintf(stderr, "dl_check: Layer %d: weights matrix mismatch: %d height to %d width.\n", i, this->weights.height, next->weights.width);
+                fprintf(stderr, "dl_check: Layer %d: weights matrix mismatch: %d height to %d width.\n", i, current->weights.height, next->weights.width);
             }
-            if (this->biases.height != this->weights.height)
+            if (current->biases.height != current->weights.height)
             {
-                fprintf(stderr, "dl_check: Layer %d: biases to weights matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->weights.height);
+                fprintf(stderr, "dl_check: Layer %d: biases to weights matrix mismatch: %d height to %d height.\n", i, current->biases.height, current->weights.height);
             }
-            if (this->biases.width != 1)
+            if (current->biases.width != 1)
             {
-                fprintf(stderr, "dl_check: Layer %d: biases matrix too wide: %d.\n", i, this->biases.width);
+                fprintf(stderr, "dl_check: Layer %d: biases matrix too wide: %d.\n", i, current->biases.width);
             }
-            if (this->biases.height != this->last_activations.height)
+            if (current->biases.height != current->last_activations.height)
             {
-                fprintf(stderr, "dl_check: Layer %d: biases to last_activations matrix mismatch: %d height to %d height.\n", i, this->biases.height, this->last_activations.height);
+                fprintf(stderr, "dl_check: Layer %d: biases to last_activations matrix mismatch: %d height to %d height.\n", i, current->biases.height, current->last_activations.height);
             }
-            if (this->ca_weights.height != this->weights.height)
+            if (current->ca_weights.height != current->weights.height)
             {
-                fprintf(stderr, "dl_check: Layer %d: ca_weights to weights matrix mismatch: %d height to %d height.\n", i, this->ca_weights.height, this->weights.height);
+                fprintf(stderr, "dl_check: Layer %d: ca_weights to weights matrix mismatch: %d height to %d height.\n", i, current->ca_weights.height, current->weights.height);
             }
-            if (this->ca_weights.width != this->weights.width)
+            if (current->ca_weights.width != current->weights.width)
             {
-                fprintf(stderr, "dl_check: Layer %d: ca_weights to weights matrix mismatch: %d width to %d width.\n", i, this->ca_weights.width, this->weights.width);
+                fprintf(stderr, "dl_check: Layer %d: ca_weights to weights matrix mismatch: %d width to %d width.\n", i, current->ca_weights.width, current->weights.width);
             }
-            if (this->ca_biases.height != this->biases.height)
+            if (current->ca_biases.height != current->biases.height)
             {
-                fprintf(stderr, "dl_check: Layer %d: ca_biases to biases matrix mismatch: %d height to %d height.\n", i, this->ca_biases.height, this->biases.height);
+                fprintf(stderr, "dl_check: Layer %d: ca_biases to biases matrix mismatch: %d height to %d height.\n", i, current->ca_biases.height, current->biases.height);
             }
-            if (this->ca_biases.width != this->biases.width)
+            if (current->ca_biases.width != current->biases.width)
             {
-                fprintf(stderr, "dl_check: Layer %d: ca_biases to biases matrix mismatch: %d width to %d width.\n", i, this->ca_biases.width, this->biases.width);
+                fprintf(stderr, "dl_check: Layer %d: ca_biases to biases matrix mismatch: %d width to %d width.\n", i, current->ca_biases.width, current->biases.width);
             }
-            if (this->der_last_activations.height != this->last_activations.height)
+            if (current->der_last_activations.height != current->last_activations.height)
             {
-                fprintf(stderr, "dl_check: Layer %d: last_activations and der_last_activations different: %d height to %d height.\n", i, this->last_activations.height, this->der_last_activations.height);
+                fprintf(stderr, "dl_check: Layer %d: last_activations and der_last_activations different: %d height to %d height.\n", i, current->last_activations.height, current->der_last_activations.height);
             }
 
             return 0;
         }
         else
         {
-            this = next;
-            next = this->next;
+            current = next;
+            next = current->next;
             i++;
         }
     }
