@@ -274,6 +274,28 @@ void test_model(node *head)
     free(t_images_v);
 }
 
+void help(char **argv)
+{
+    const char *msg =
+"Usage:  %s [-l <size>] [-f <filename>] [-t <filename>]\n\
+        [-a <rate>] [-r <count>] [-b <count>] [-h]\n\
+\n\
+        -a <rate>       Specify a learning rate. Default is 0.15\n\
+        -b <count>      Specify the size of each batch of training images used in stochastic\n\
+                        gradient descent. Default is 100\n\
+        -f <filename>   Specify the filename of the resulting model file. The '.cdl' extension\n\
+                        is added automatically.\n\
+        -l <size>       Can be used multiple times. Specify the size of the next hidden layer.\n\
+                        Each layer is added in order of appearance.\n\
+        -r <count>      Specify the number of training rounds over the shuffled training set.\n\
+                        Default is 10.\n\
+        -h              Show this help menu.\n\
+\n\
+Example: %s -l 100 -l 50 -a 0.2 -r 15 -f myDLModel\n";
+
+    printf(msg, argv[0], argv[0]);
+}
+
 int main(int argc, char **argv)
 {
     // Handle args
@@ -314,12 +336,12 @@ int main(int argc, char **argv)
             -a: specify the learning rate
             -r: specify how many training runs to do
             -b: specify batch size
+            -h: help menu
 
         Not implemented:
-            -h: help menu
     */
 
-    while ((c = getopt(argc, argv, "l:f:t:a:r:b:")) != -1)
+    while ((c = getopt(argc, argv, "l:f:t:a:r:b:h")) != -1)
     {
         switch (c)
         {
@@ -338,13 +360,34 @@ int main(int argc, char **argv)
             break;
         case 'a':
             alpha = atof(optarg);
+            if (!alpha)
+            {
+                fprintf(stderr, "Option -%c requires a non-zero decimal argument\n", optopt);
+                help(argv);
+                return 1;
+            }
             break;
         case 'r':
             runs = abs(atoi(optarg));
+            if (!runs)
+            {
+                fprintf(stderr, "Option -%c requires a non-zero integer argument\n", optopt);
+                help(argv);
+                return 1;
+            }
             break;
         case 'b':
             batch_size = abs(atoi(optarg));
+            if (!batch_size)
+            {
+                fprintf(stderr, "Option -%c requires a non-zero integer argument\n", optopt);
+                help(argv);
+                return 1;
+            }
             break;
+        case 'h':
+            help(argv);
+            return 0;
         case ':':
             fprintf(stderr, "Option -%c requires an argument\n", optopt);
             return 1;
@@ -353,6 +396,8 @@ int main(int argc, char **argv)
                 fprintf(stderr, "Unknown option '-%c'\n", optopt);
             else
                 fprintf(stderr, "Unknown option character '\\x%x'.\n", optopt);
+            
+            help(argv);
             return 1;
         default:
             printf("%d %c\n", c, optopt);
@@ -374,6 +419,15 @@ int main(int argc, char **argv)
         }
 
         return 0;
+    }
+
+    // no arguments given, default to 2 16-neuron hidden layers
+    if (argc == 1)
+    {
+        sizes[n_layers - 1] = 16;
+        sizes = (int*) realloc(sizes, sizeof(int) * ++n_layers);
+        sizes[n_layers - 1] = 16;
+        sizes = (int*) realloc(sizes, sizeof(int) * ++n_layers);
     }
 
     // last layer will be output
