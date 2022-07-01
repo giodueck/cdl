@@ -132,7 +132,7 @@ void print_label(uint8_t *labels, int index)
     printf("Label: %d\n", labels[index]);
 }
 
-void print_image(uint8_t **images_v, uint8_t *labels, int count, int index)
+void print_image(uint8_t **images_v, int count, int index)
 {
     while (index < 0)
     {
@@ -157,11 +157,11 @@ void print_image(uint8_t **images_v, uint8_t *labels, int count, int index)
 }
 
 // Only prints every NxNth pixel, downscaling defines that N
-void print_image_smaller(uint8_t **images_v, uint8_t *labels, int count, int index, int downscaling)
+void print_image_smaller(uint8_t **images_v, int count, int index, int downscaling)
 {
     if (downscaling <= 1)
     {
-        print_image(images_v, labels, count, index);
+        print_image(images_v, count, index);
         return;
     }
 
@@ -202,6 +202,47 @@ void shuffle_images(uint8_t **images_v, uint8_t *labels, int len)
         images_v[j] = x;
         labels[j] = y;
     }
+}
+
+uint8_t *augment_labels(uint8_t *labels, int count, int factor)
+{
+    uint8_t *aug_labels = (uint8_t*) malloc(sizeof(uint8_t) * count * factor);
+
+    for (int i = 0; i < count; i++)
+    {
+        for (int j = 0; j < factor; j++)
+        {
+            aug_labels[i * factor + j] = labels[i];
+        }
+    }
+    
+    return aug_labels;
+}
+
+uint8_t *augment_images(uint8_t *images, int count, int factor)
+{
+    uint8_t *aug_images = (uint8_t*) malloc(sizeof(uint8_t*) * 784 * count * factor);
+    uint8_t *im0, *im1, *im2;
+
+    for (int i = 0; i < count; i++)
+    {
+        for (int j = 0; j < factor; j++)
+        {
+            if (j > 0)
+            {
+                im0 = dl_rotate_image_rand(&images[i * 784]);
+                im1 = dl_shift_image_rand(im0);
+                im2 = dl_shear_image_rand(im1);
+                memcpy(&aug_images[(i * factor + j) * 784], im2, sizeof(uint8_t) * 784);
+                free(im0);
+                free(im1);
+                free(im2);
+            } else
+                memcpy(&aug_images[(i * factor + j) * 784], &images[i * 784], sizeof(uint8_t) * 784);
+        }
+    }
+    
+    return aug_images;
 }
 
 void test_model(node *head)
@@ -278,7 +319,7 @@ void help(char **argv)
 {
     const char *msg =
 "Usage:  %s [-l <size>] [-f <filename>] [-t <filename>]\n\
-        [-a <rate>] [-r <count>] [-b <count>] [-h]\n\
+        [-a <rate>] [-r <count>] [-b <count>] [-h] [-g <factor>]\n\
 \n\
         -a <rate>       Specify a learning rate. Default is 0.15\n\
         -b <count>      Specify the size of each batch of training images used in stochastic\n\
@@ -290,6 +331,8 @@ void help(char **argv)
         -r <count>      Specify the number of training rounds over the shuffled training set.\n\
                         Default is 10.\n\
         -h              Show this help menu.\n\
+        -g <factor>     Specify how many times to augment the data. Default is 5. To disable use\n\
+                        -g 1.\n\
 \n\
 Example: %s -l 100 -l 50 -a 0.2 -r 15 -f myDLModel\n";
 
@@ -305,7 +348,7 @@ int main(int argc, char **argv)
     const int n_inputs = 784;
     const int n_outputs = 10;
     char filename[FILENAME_MAX];
-    sprintf(filename, "dl-%d.dld", time(0));
+    sprintf(filename, "dl-%ld.dld", time(0));
     // range for initial values
     const int randmin = -1, randmax = 1;
     // learning rate
@@ -314,6 +357,8 @@ int main(int argc, char **argv)
     int runs = 10;
     // Train in batches of random images
     int batch_size = 100;
+    // Augment data
+    int augmentation_factor = 5;
     
     int c;
     extern int optopt;
@@ -337,11 +382,12 @@ int main(int argc, char **argv)
             -r: specify how many training runs to do
             -b: specify batch size
             -h: help menu
+            -g: specify the factor for data augmentation
 
         Not implemented:
     */
 
-    while ((c = getopt(argc, argv, "l:f:t:a:r:b:h")) != -1)
+    while ((c = getopt(argc, argv, "l:f:t:a:r:b:hg:")) != -1)
     {
         switch (c)
         {
@@ -388,6 +434,15 @@ int main(int argc, char **argv)
         case 'h':
             help(argv);
             return 0;
+        case 'g':
+            augmentation_factor = abs(atoi(optarg));
+            if (!augmentation_factor)
+            {
+                fprintf(stderr, "Option -%c requires a non-zero integer argument\n", optopt);
+                help(argv);
+                return 1;
+            }
+            break;
         case ':':
             fprintf(stderr, "Option -%c requires an argument\n", optopt);
             return 1;
@@ -434,24 +489,34 @@ int main(int argc, char **argv)
     sizes[n_layers - 1] = n_outputs;
 
     // Load training data
-    uint8_t *labels = get_labels("mnist/train-labels.idx1-ubyte");
-    int count = get_len("mnist/train-labels.idx1-ubyte");
-    uint8_t *images = get_images("mnist/train-images.idx3-ubyte");
-    uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
+    printf("Loading training data...");
+    fflush(stdout);
+    int training_count = get_len("mnist/train-labels.idx1-ubyte");
+    uint8_t *training_labels = get_labels("mnist/train-labels.idx1-ubyte");
+    uint8_t *training_images = get_images("mnist/train-images.idx3-ubyte");
+    uint8_t **training_images_v = (uint8_t**) malloc(sizeof(uint8_t*) * training_count);
 
+    // Every *images_v points to one array of 784 pixels, or one image
+    for (int i = 0; i < training_count; i++)
+        training_images_v[i] = &training_images[i * 784];
+    printf("done!\n");
+
+    // Augment training data
+    if (augmentation_factor > 1) printf("Augmenting training data by a factor of %d...", augmentation_factor);
+    fflush(stdout);
+    int count = training_count * augmentation_factor;
+    uint8_t *labels = augment_labels(training_labels, training_count, augmentation_factor);
+    uint8_t *images = augment_images(training_images, training_count, augmentation_factor);
+    uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
+    
     // Every *images_v points to one array of 784 pixels, or one image
     for (int i = 0; i < count; i++)
         images_v[i] = &images[i * 784];
+    if (augmentation_factor > 1) printf("done!\n");
+
+    printf("Total training images: %d\n", count);
     
     srand(time(0));
-    rand();
-
-    print_image(images_v, labels, count, 0);
-    uint8_t *image0 = dl_rotate_image_rand(images_v[0]);
-    uint8_t *image1 = dl_shift_image_rand(image0);
-    uint8_t *image2 = dl_shear_image_rand(image1);
-    print_image(&image2, labels, 1, 0);
-    exit(0);
 
     // Create Neural Network
     node *head;
@@ -481,6 +546,8 @@ int main(int argc, char **argv)
     int correct_answers;
     int choice;
     double confidence = 0;
+    char percent[8];
+    int percent_len;
 
     printf("%d training runs in batches of %d pictures.\nLearning rate is %lf.\n", runs, batch_size, alpha);
     for (int run = 0; run < runs; run++)
@@ -491,8 +558,16 @@ int main(int argc, char **argv)
 
         printf("Training run %d...", run);
         fflush(stdout);
+        percent[0] = '\0';
         for (int i = 0; i < batches; i++)
         {
+            // Training run progress
+            for (int n = 0; percent[n] != '\0'; n++)
+                putc('\b', stdout);
+            sprintf(percent, "%.2lf%%", (double) i / batches * 100);
+            printf("%s", percent);
+            fflush(stdout);
+
             for (int j = 0; j < batch_size; j++)
             {
                 // input and expected result creation
@@ -551,6 +626,9 @@ int main(int argc, char **argv)
     dl_free(head);
 
     free(sizes);
+    free(training_labels);
+    free(training_images);
+    free(training_images_v);
     free(labels);
     free(images);
     free(images_v);
