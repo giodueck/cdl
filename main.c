@@ -444,6 +444,14 @@ int main(int argc, char **argv)
         images_v[i] = &images[i * 784];
     
     srand(time(0));
+    rand();
+
+    print_image(images_v, labels, count, 0);
+    uint8_t *image0 = dl_rotate_image_rand(images_v[0]);
+    uint8_t *image1 = dl_shift_image_rand(image0);
+    uint8_t *image2 = dl_shear_image_rand(image1);
+    print_image(&image2, labels, 1, 0);
+    exit(0);
 
     // Create Neural Network
     node *head;

@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#define _USE_MATH_DEFINES
 #include <math.h>
 #include <time.h>
 #include <string.h>
@@ -746,4 +747,118 @@ void dl_backwards_pass(node *head, matrix expected, double alpha)
     matrix loss = dl_mse_loss(tail->last_activations, expected);
     dl_backpropagate(tail, loss, alpha);
     matrix_free(loss);
+}
+
+void cart_to_polar(double x, double y, double *r, double *phi)
+{
+    *r = sqrt(x*x + y*y);
+    *phi = atan2(y, x);
+}
+
+void polar_to_cart(double r, double phi, double *x, double *y)
+{
+    *x = r * cos(phi);
+    *y = r * sin(phi);
+}
+
+void place_aliased_pixel(uint8_t *image, double x, double y, int value)
+{
+    if (value == 0)
+        return;
+
+    int x_ = (int)x;
+    int y_ = (int)y;
+
+    double xmod = x - x_;
+    double ymod = y - y_;
+    double xmodinv = 1 - xmod;
+    double ymodinv = 1 - ymod;
+
+    // Consider if pixel is in image and the pixel is not overflowing
+    if (x_ >= 0 && y_ >= 0 && x_ < 28 && y_ < 28)
+        image[y_ * 28 + x_] = (image[y_ * 28 + x_] + value * xmodinv * ymodinv > 255) ? 255 : image[y_ * 28 + x_] + value * xmodinv * ymodinv ;
+    if (x_ + 1 >= 0 && y_ >= 0 && x_ + 1 < 28 && y_ < 28)
+        image[y_ * 28 + x_ + 1] = (image[y_ * 28 + x_ + 1] + value * xmod * ymodinv > 255) ? 255 : image[y_ * 28 + x_ + 1] + value * xmod * ymodinv ;
+    if (x_ >= 0 && y_ + 1 >= 0 && x_ < 28 && y_ + 1 < 28)
+        image[(y_ + 1) * 28 + x_] = (image[(y_ + 1) * 28 + x_] + value * xmodinv * ymod > 255) ? 255 : image[(y_ + 1) * 28 + x_] + value * xmodinv * ymod ;
+    if (x_ + 1 >= 0 && y_ + 1 >= 0 && x_ + 1 < 28 && y_ + 1 < 28)
+        image[(y_ + 1) * 28 + x_ + 1] = (image[(y_ + 1) * 28 + x_ + 1] + value * xmod * ymod > 255) ? 255 : image[(y_ + 1) * 28 + x_ + 1] + value * xmod * ymod ;
+}
+
+// Randomly rotate the image to create a new one
+uint8_t *dl_rotate_image_rand(uint8_t *image)
+{
+    int x, y;
+    double r, phi, x_, y_;
+    uint8_t *new_image = (uint8_t*) malloc(sizeof(uint8_t) * 784);
+    memset(new_image, 0, sizeof(uint8_t) * 784);
+    double rot = randfrom(-DL_ROTATIONMAX, +DL_ROTATIONMAX);
+
+    for (int i = 0; i < 28; i++)
+    {
+        for (int j = 0; j < 28; j++)
+        {
+            // translate center of image to origin
+            x = j - 14;
+            y = i - 14;
+            cart_to_polar(x, y, &r, &phi);
+            phi += rot;
+            polar_to_cart(r, phi, &x_, &y_);
+            // translate back to center of image
+            x_ += 14;
+            y_ += 14;
+            // set new pixel
+            place_aliased_pixel(new_image, x_, y_, image[i * 28 + j]);
+        }
+    }
+    return new_image;
+}
+
+// Randomly shift the image vertically and horizontally to create a new one
+uint8_t *dl_shift_image_rand(uint8_t *image)
+{
+    uint8_t *new_image = (uint8_t*) malloc(sizeof(uint8_t) * 784);
+    memset(new_image, 0, sizeof(uint8_t) * 784);
+    int di = rand() % (2 * DL_SHIFTMAX) - DL_SHIFTMAX;
+    int dj = rand() % (2 * DL_SHIFTMAX) - DL_SHIFTMAX;
+    int is, js;
+
+    for (int i = 0; i < 28; i++)
+    {
+        for (int j = 0; j < 28; j++)
+        {
+            is = i + di;
+            js = j + dj;
+            if (is * 28 + js >= 0 && is * 28 + js < 784)
+                new_image[is * 28 + js] = image[i * 28 + j];
+        }
+    }
+    return new_image;
+}
+
+// Randomly scale the image up or down to create a new one
+// uint8_t *dl_zoom_image_rand(uint8_t *image)
+// {
+    
+// }
+
+// Randomly apply shear to the image to create a new one
+uint8_t *dl_shear_image_rand(uint8_t *image)
+{
+    uint8_t *new_image = (uint8_t*) malloc(sizeof(uint8_t) * 784);
+    memset(new_image, 0, sizeof(uint8_t) * 784);
+    double angle = randfrom(0, 2 * M_PI);
+    double shear_val = randfrom(0, DL_SHEARMAX);
+    double x_, y_;
+
+    for (int i = 0; i < 28; i++)
+    {
+        for (int j = 0; j < 28; j++)
+        {
+            x_ = j + i * cos(angle) * shear_val;
+            y_ = i + j * sin(angle) * shear_val;
+            place_aliased_pixel(new_image, x_, y_, image[i * 28 + j]);
+        }
+    }
+    return new_image;
 }

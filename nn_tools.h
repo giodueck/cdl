@@ -1,14 +1,24 @@
 #ifndef NN_TOOLS_H
 #define NN_TOOLS_H
 
+#include <inttypes.h>
 
-#define DL_INPUT    0
-#define DL_HIDDEN   1
-#define DL_OUTPUT   2
+#define DL_INPUT        0
+#define DL_HIDDEN       1
+#define DL_OUTPUT       2
 
-#define DL_RANDMAX 1
-#define DL_RANDMIN -1
+#define DL_RANDMAX      1
+#define DL_RANDMIN     -1
 
+// Data transformations
+#define DL_ROTATIONMAX  0.2618 // 15 deg in radians
+#define DL_SHIFTMAX     4
+#define DL_SHEARMAX     0.2
+// #define DL_ZOOMMIN      0.75
+// #define DL_ZOOMMAX      1.25
+
+#define min(a,b) (((a) < (b)) ? (a) : (b))
+#define max(a,b) (((a) > (b)) ? (a) : (b))
 // Matrix code
 
 // Note: the matrix itself is just pointer to pointers,
@@ -134,5 +144,19 @@ void dl_adjust(node *head);
 // expected is the expected output
 // alpha is the learning constant
 void dl_backwards_pass(node *head, matrix expected, double alpha);
+
+// Data transformation code
+
+// Randomly rotate the image to create a new one
+uint8_t *dl_rotate_image_rand(uint8_t *image);
+
+// Randomly shift the image vertically and horizontally to create a new one
+uint8_t *dl_shift_image_rand(uint8_t *image);
+
+// Randomly scale the image up or down to create a new one
+// uint8_t *dl_zoom_image_rand(uint8_t *image);
+
+// Randomly apply shear to the image to create a new one
+uint8_t *dl_shear_image_rand(uint8_t *image);
 
 #endif // NN_TOOLS_H

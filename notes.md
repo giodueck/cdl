@@ -60,3 +60,17 @@ Data:
     - int: height
     - int: width
     - double[height * width]: matrix
+
+### DL: Improving performance
+
+#### 1. Data Augmentation
+
+Increase the number of train data in the following ways
+
+Random rotation: each image rotates randomly
+
+Random shift: each image randomly moves
+
+Random shear: each image gets slightly distorted
+
+Random zoom: each image is slightly scaled down or up
