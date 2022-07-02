@@ -334,7 +334,7 @@ void help(char **argv)
         -g <factor>     Specify how many times to augment the data. Default is 5. To disable use\n\
                         -g 1.\n\
 \n\
-Example: %s -l 100 -l 50 -a 0.2 -r 15 -f myDLModel\n";
+Example: %s -l 100 -l 50 -a 0.2 -e 15 -f myDLModel\n";
 
     printf(msg, argv[0], argv[0]);
 }
