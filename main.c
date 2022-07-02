@@ -328,7 +328,7 @@ void help(char **argv)
                         is added automatically.\n\
         -l <size>       Can be used multiple times. Specify the size of the next hidden layer.\n\
                         Each layer is added in order of appearance.\n\
-        -r <count>      Specify the number of training rounds over the shuffled training set.\n\
+        -e <count>      Specify the number of training rounds (epochs) over the shuffled training set.\n\
                         Default is 10.\n\
         -h              Show this help menu.\n\
         -g <factor>     Specify how many times to augment the data. Default is 5. To disable use\n\
@@ -354,7 +354,7 @@ int main(int argc, char **argv)
     // learning rate
     double alpha = 0.15;
     // Train the model several times over shuffled versions of the same dataset
-    int runs = 10;
+    int epochs = 10;
     // Train in batches of random images
     int batch_size = 100;
     // Augment data
@@ -379,7 +379,7 @@ int main(int argc, char **argv)
             -f <filename>: specify file name to save model to
             -t <filename>: specify file to test model
             -a: specify the learning rate
-            -r: specify how many training runs to do
+            -e: specify how many training runs (epochs) to do
             -b: specify batch size
             -h: help menu
             -g: specify the factor for data augmentation
@@ -387,7 +387,7 @@ int main(int argc, char **argv)
         Not implemented:
     */
 
-    while ((c = getopt(argc, argv, "l:f:t:a:r:b:hg:")) != -1)
+    while ((c = getopt(argc, argv, "l:f:t:a:e:b:hg:")) != -1)
     {
         switch (c)
         {
@@ -413,9 +413,9 @@ int main(int argc, char **argv)
                 return 1;
             }
             break;
-        case 'r':
-            runs = abs(atoi(optarg));
-            if (!runs)
+        case 'e':
+            epochs = abs(atoi(optarg));
+            if (!epochs)
             {
                 fprintf(stderr, "Option -%c requires a non-zero integer argument\n", optopt);
                 help(argv);
@@ -549,14 +549,14 @@ int main(int argc, char **argv)
     char percent[8];
     int percent_len;
 
-    printf("%d training runs in batches of %d pictures.\nLearning rate is %lf.\n", runs, batch_size, alpha);
-    for (int run = 0; run < runs; run++)
+    printf("%d epochs in batches of %d pictures.\nLearning rate is %lf.\n", epochs, batch_size, alpha);
+    for (int epoch = 0; epoch < epochs; epoch++)
     {    
         shuffle_images(images_v, labels, count);
         avg_cost = 0;
         correct_answers = 0;
 
-        printf("Training run %d...", run);
+        printf("Training epoch %d...", epoch);
         fflush(stdout);
         percent[0] = '\0';
         for (int i = 0; i < batches; i++)
@@ -610,7 +610,7 @@ int main(int argc, char **argv)
             avg_cost += costs[l];
         }
         avg_cost /= batches;
-        printf("\rAvg cost over run %d: %.4lf\tAcc: %.2lf%%\n", run, avg_cost, (double) correct_answers / (batch_size * batches) * 100);
+        printf("\rAvg cost over epoch %d: %.4lf\tAcc: %.2lf%%\n", epoch, avg_cost, (double) correct_answers / (batch_size * batches) * 100);
     }
 
     // Save model
