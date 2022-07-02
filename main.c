@@ -319,7 +319,7 @@ void help(char **argv)
 {
     const char *msg =
 "Usage:  %s [-l <size>] [-f <filename>] [-t <filename>]\n\
-        [-a <rate>] [-r <count>] [-b <count>] [-h] [-g <factor>]\n\
+        [-a <rate>] [-e <count>] [-b <count>] [-h] [-g <factor>]\n\
 \n\
         -a <rate>       Specify a learning rate. Default is 0.15\n\
         -b <count>      Specify the size of each batch of training images used in stochastic\n\
