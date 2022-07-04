@@ -212,13 +212,7 @@ matrix matrix_copy(matrix from)
 // Sets the entire matrix to 0, returns the same matrix
 matrix matrix_zero(matrix A)
 {
-    for (int i = 0; i < A.height; i++)
-    {
-        for (int j = 0; j < A.width; j++)
-        {
-            A.matrix[i][j] = 0;
-        }
-    }
+    memset(A.matrix[0], 0, sizeof(double) * A.height * A.width);
 
     return A;
 }
@@ -566,9 +560,10 @@ node *dl_load(const char *filename)
 }
 
 // Using an input column and the neural networks input node, calculate the result column
+// Does not use recursion to be able to use GPU acceleration
 matrix dl_process(node *in_node, matrix input)
 {
-    matrix result, interm, der_interm;
+    matrix act, der_act;
 
     // Error checking
     if (in_node->prev == NULL && !dl_check(in_node))
@@ -582,37 +577,34 @@ matrix dl_process(node *in_node, matrix input)
         return NULL_MATRIX;
     }
 
-    // If the current layer is not the input layer, do calculation, else pass on the input
-    if (in_node->prev != NULL)
+    input = matrix_copy(input);
+    while(in_node)
     {
-        // interm is the vector of neuron activations for this layer,
-        // for the head it is the input, for any other layer, the result of the calculation
-        interm = matrix_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
+        // If the current layer is not the input layer, do calculation, else pass on the input
+        if (in_node->prev != NULL)
+        {
+            // act is the vector of neuron activations for this layer,
+            // for the head it is the input, for any other layer, the result of this calculation
+            act = matrix_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
 
-        // der_interm, derivated intermediate, is used for backpropagation and not needed for the input layer
-        der_interm = matrix_derivated_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
-        matrix_init(in_node->der_last_activations, der_interm.matrix);
-        matrix_free(der_interm);
-    }
-    else
-        interm = matrix_copy(input);
+            // der_act, derivated activations, is used for backpropagation and not needed for the input layer
+            der_act = matrix_derivated_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
+            matrix_init(in_node->der_last_activations, der_act.matrix);
+            matrix_free(der_act);
+        }
+        else
+            act = matrix_copy(input);
+        
+        matrix_init(in_node->last_activations, act.matrix);
 
-    // interm is the vector of neuron activations for this layer, for the head it is the input, for any other layer, the result of the calculation
-    matrix_init(in_node->last_activations, interm.matrix);
-
-    if (in_node->next != NULL)
-    {
-        // Recursion, go to next layer
-        result = dl_process(in_node->next, interm);
-        matrix_free(interm);
-    }
-    else
-    {
-        // Base case: output layer
-        return interm;
+        // go to next layer
+        matrix_free(input);
+        input = act;
+        in_node = in_node->next;
     }
 
-    return result;
+    // input will be the result, not the original input
+    return input;
 }
 
 // Calculates the cost for the result
@@ -673,6 +665,7 @@ matrix dl_log_loss(matrix output, matrix expected)
     return loss;
 }
 
+// Compute loss matrix, 2 * (a(i) - y(i))
 matrix dl_mse_loss(matrix output, matrix expected)
 {
     matrix loss = matrix_create(output.height, 1);
@@ -684,60 +677,56 @@ matrix dl_mse_loss(matrix output, matrix expected)
     return loss;
 }
 
-// Calculates all adjustments for a layer and recursively propagates to the previous node until the input node is reached
-void dl_backpropagate(node *n, matrix loss, double alpha)
-{
-    // check if input layer
-    if (!n->prev)
-        return;
-    
-    matrix new_loss = matrix_create(n->prev->last_activations.height, 1);
-    for (int i = 0; i < n->ca_weights.height; i++)
-    {
-        for (int j = 0; j < n->ca_weights.width; j++)
-        {
-            // strictly speaking, the loss should be multiplied by 2, but that is a constant that can be part of alpha
-            n->ca_weights.matrix[i][j] += n->der_last_activations.matrix[i][0]
-                                        * loss.matrix[i][0]
-                                        * n->prev->last_activations.matrix[j][0]
-                                        * alpha;
-        }
-        n->ca_biases.matrix[i][0] += loss.matrix[i][0] * alpha;
-    }
-
-    for (int j = 0; j < new_loss.height; j++)
-    {
-        for (int i = 0; i < n->ca_weights.height; i++)
-        {
-            new_loss.matrix[j][0] += n->der_last_activations.matrix[i][0] * loss.matrix[i][0] * n->weights.matrix[i][j];
-        }
-    }
-
-    // backpropagate
-    n->n_ca++;
-    dl_backpropagate(n->prev, new_loss, alpha);
-    matrix_free(new_loss);
-}
-
 // Starts the backwards pass and calculates adjustments to weights and biases for all layers but the input
 // expected is the expected output
 // alpha is the learning constant
-void dl_backwards_pass(node *head, matrix expected, double alpha)
+void dl_backpropagation(node *head, matrix loss, double alpha)
 {
     // look for tail
     node *tail = head;
     while (tail->next)
         tail = tail->next;
-
-    if (tail->last_activations.height != expected.height)
+    
+    if (tail->last_activations.height != loss.height)
     {
-        fprintf(stderr, "dl_backwards_pass: Output and expected matrix height differ: %d to %d.\n", tail->last_activations.height, expected.height);
+        fprintf(stderr, "dl_backwards_pass: Output and loss matrix height differ: %d to %d.\n", tail->last_activations.height, loss.height);
         exit(1);
     }
 
-    // start backwards pass at tail
-    matrix loss = dl_mse_loss(tail->last_activations, expected);
-    dl_backpropagate(tail, loss, alpha);
+    // start backwards pass at tail, stop when the input layer has been reached
+    matrix new_loss;
+    loss = matrix_copy(loss);
+    while(tail->prev)
+    {
+        new_loss = matrix_create(tail->prev->last_activations.height, 1);
+
+        for (int i = 0; i < tail->ca_weights.height; i++)
+        {
+            for (int j = 0; j < tail->ca_weights.width; j++)
+            {
+                // strictly speaking, the loss should be multiplied by 2, but that is a constant that can be part of alpha
+                tail->ca_weights.matrix[i][j] += tail->der_last_activations.matrix[i][0]
+                                            * loss.matrix[i][0]
+                                            * tail->prev->last_activations.matrix[j][0]
+                                            * alpha;
+            }
+            tail->ca_biases.matrix[i][0] += loss.matrix[i][0] * alpha;
+        }
+
+        for (int j = 0; j < new_loss.height; j++)
+        {
+            for (int i = 0; i < tail->ca_weights.height; i++)
+            {
+                new_loss.matrix[j][0] += tail->der_last_activations.matrix[i][0] * loss.matrix[i][0] * tail->weights.matrix[i][j];
+            }
+        }
+
+        // backpropagate
+        tail->n_ca++;
+        matrix_free(loss);
+        loss = new_loss;
+        tail = tail->prev;
+    }
     matrix_free(loss);
 }
 

@@ -140,10 +140,13 @@ double dl_cost(matrix result, matrix expected);
 // Applies the stored adjustments to the weights and biases
 void dl_adjust(node *head);
 
+// Compute loss matrix, 2 * (a(i) - y(i))
+matrix dl_mse_loss(matrix output, matrix expected);
+
 // Starts the backwards pass and calculates adjustments to weights and biases for all layers but the input
-// expected is the expected output
+// loss is the difference between output and expected
 // alpha is the learning constant
-void dl_backwards_pass(node *head, matrix expected, double alpha);
+void dl_backpropagation(node *head, matrix loss, double alpha);
 
 // Data transformation code
 

@@ -348,9 +348,7 @@ int main(int argc, char **argv)
     const int n_inputs = 784;
     const int n_outputs = 10;
     char filename[FILENAME_MAX];
-    sprintf(filename, "dl-%ld.dld", time(0));
-    // range for initial values
-    const int randmin = -1, randmax = 1;
+    sprintf(filename, "dl-%ld.dld", (long) time(0));
     // learning rate
     double alpha = 0.15;
     // Train the model several times over shuffled versions of the same dataset
@@ -516,7 +514,7 @@ int main(int argc, char **argv)
 
     printf("Total training images: %d\n", count);
     
-    srand(time(0));
+    // srand(time(0));
 
     // Create Neural Network
     node *head;
@@ -541,13 +539,13 @@ int main(int argc, char **argv)
     matrix input = matrix_create(n_inputs, 1);
     matrix output;
     matrix expected = matrix_create(10, 1);
+    matrix loss;
 
     // verification
     int correct_answers;
     int choice;
     double confidence = 0;
     char percent[8];
-    int percent_len;
 
     printf("%d epochs in batches of %d pictures.\nLearning rate is %lf.\n", epochs, batch_size, alpha);
     for (int epoch = 0; epoch < epochs; epoch++)
@@ -578,10 +576,13 @@ int main(int argc, char **argv)
                 expected = matrix_zero(expected);
                 expected.matrix[labels[i * batch_size + j]][0] = 1;
 
-                // Process and store adjustments
+                // Forwards
                 output = dl_process(head, input);
-                dl_backwards_pass(head, expected, alpha);
                 costs[i] += dl_cost(output, expected);
+
+                // Backwards
+                loss = dl_mse_loss(output, expected);
+                dl_backpropagation(head, loss, alpha);
 
                 // dbg: testing correctness
                 // verification
@@ -626,6 +627,7 @@ int main(int argc, char **argv)
     dl_free(head);
 
     free(sizes);
+    free(costs);
     free(training_labels);
     free(training_images);
     free(training_images_v);
