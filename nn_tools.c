@@ -89,7 +89,6 @@ matrix matrix_mult(matrix A, matrix B)
     }
 
     matrix C = matrix_create(A.height, B.width);
-    int n;
 
     for (int r_a = 0; r_a < A.height; r_a++)
     {
