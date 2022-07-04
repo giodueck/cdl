@@ -55,6 +55,7 @@ int matrix_free(matrix A)
 
     free(A.matrix[0]);
     free(A.matrix);
+    A.matrix = NULL;
     return 0;
 }
 
@@ -557,6 +558,43 @@ node *dl_load(const char *filename)
     fclose(fd);
     nodes[0].self = nodes;
     return &nodes[0];
+}
+
+// Create a copy of a Deep Neural Network
+node *dl_copy(node *head)
+{
+    int n_inputs = 0, n_layers = 0;
+    int *sizes, sizes_len = 0;
+    node *copy, *og_copy, *og_head = head;
+
+    sizes = malloc(sizeof(int) * (sizes_len += 10));
+    
+    while(head)
+    {
+        if (head->prev == NULL)
+            n_inputs = head->last_activations.height;
+        else
+        {
+            if (sizes_len <= n_layers + 1)
+                sizes = realloc(sizes, sizeof(int) * (sizes_len += 10));
+            sizes[n_layers++] = head->last_activations.height;
+        }
+        head = head->next;
+    }
+
+    copy = dl_create(n_inputs, n_layers, sizes);
+    og_copy = copy;
+    free(sizes);
+
+    head = og_head;
+    while(head)
+    {
+        matrix_init(copy->weights, head->weights.matrix);
+        matrix_init(copy->biases, head->biases.matrix);
+        head = head->next;
+        copy = copy->next;
+    }
+    return og_copy;
 }
 
 // Using an input column and the neural networks input node, calculate the result column

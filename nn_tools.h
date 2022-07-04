@@ -130,6 +130,9 @@ void dl_dump(node *head, const char *filename);
 // If the magic number "CDLD" is not present, the return is NULL
 node *dl_load(const char *filename);
 
+// Create a copy of a Deep Neural Network
+node *dl_copy(node *head);
+
 // Using an input column and the neural networks input node, calculate the result column
 matrix dl_process(node *in_node, matrix input);
 

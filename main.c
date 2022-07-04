@@ -289,6 +289,7 @@ void test_model(node *head)
         output = dl_process(head, input);
 
         // verification
+        choice = 0;
         for (int j = 0; j < n_outputs; j++)
         {
             if (output.matrix[j][0] > confidence)
@@ -309,7 +310,6 @@ void test_model(node *head)
 
     matrix_free(input);
     matrix_free(expected);
-    matrix_free(output);
     free(t_labels);
     free(t_images);
     free(t_images_v);
@@ -547,7 +547,7 @@ int main(int argc, char **argv)
     double confidence = 0;
     char percent[8];
 
-    printf("%d epochs in batches of %d pictures.\nLearning rate is %lf.\n", epochs, batch_size, alpha);
+    printf("%d %s in batches of %d pictures.\nLearning rate is %lf.\n", epochs, (epochs == 1) ? "epoch" : "epochs", batch_size, alpha);
     for (int epoch = 0; epoch < epochs; epoch++)
     {    
         shuffle_images(images_v, labels, count);
