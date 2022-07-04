@@ -10,36 +10,37 @@
 // Returns 0 matrix struct with width number of columns and height number of rows
 matrix matrix_create(int height, int width)
 {
-    matrix A = (matrix){ .height = height, .width = width, .matrix = NULL };
+    matrix A;
+    A.height = height;
+    A.width = width;
+    A.matrix = NULL;
 
-    A.matrix = (double **)malloc(sizeof(double *) * A.height);
+    A.matrix = (double **) malloc(sizeof(double *) * A.height);
     if (!A.matrix)
     {
         fprintf(stderr, "matric_create: Allocation error\n");
-        return NULL_MATRIX;
+        A.height = 0;
+        A.width = 0;
+        A.matrix = NULL;
+        return A;
     }
 
-    for (int i = 0; i < A.height; i++)
+    A.matrix[0] = (double *) malloc(sizeof(double) * A.height * A.width);
+    if (!A.matrix)
     {
-        A.matrix[i] = (double *)malloc(sizeof(double) * A.width);
-        if (!A.matrix[i])
-        {
-            // go back and free malloced rows
-            for (i--; i >= 0; i--)
-            {
-                free(A.matrix[i]);
-            }
-            fprintf(stderr, "matric_create: Allocation error\n");
-            free(A.matrix);
-            return NULL_MATRIX;
-        }
-
-        for (int j = 0; j < A.width; j++)
-        {
-            A.matrix[i][j] = 0;
-        }
+        fprintf(stderr, "matric_create: Allocation error\n");
+        free(A.matrix);
+        A.height = 0;
+        A.width = 0;
+        A.matrix = NULL;
+        return A;
+    }
+    for (int i = 1; i < A.height; i++)
+    {
+        A.matrix[i] = A.matrix[0] + i * A.width;
     }
 
+    matrix_zero(A);
     return A;
 }
 
@@ -52,10 +53,7 @@ int matrix_free(matrix A)
         return 1;
     }
 
-    for (int i = 0; i < A.height; i++)
-    {
-        free(A.matrix[i]);
-    }
+    free(A.matrix[0]);
     free(A.matrix);
     return 0;
 }
@@ -195,15 +193,10 @@ matrix matrix_init_rand(matrix A, double min, double max)
 }
 
 // Copies mat into A.matrix, returns the same matrix
+// mat[0] should point to a contiguous block of memory
 matrix matrix_init(matrix A, double **mat)
 {
-    for (int i = 0; i < A.height; i++)
-    {
-        for (int j = 0; j < A.width; j++)
-        {
-            A.matrix[i][j] = mat[i][j];
-        }
-    }
+    memcpy(A.matrix[0], mat[0], sizeof(double) * A.height * A.width);
 
     return A;
 }
