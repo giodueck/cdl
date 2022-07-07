@@ -254,7 +254,7 @@ uint8_t *augment_images(uint8_t *images, int count, int factor)
     return aug_images;
 }
 
-void test_model(node *head)
+void test_model(node *head, int augmentation_factor)
 {
     // Load testing data
     uint8_t *t_labels = get_labels("mnist/t10k-labels.idx1-ubyte");
@@ -264,6 +264,23 @@ void test_model(node *head)
 
     for (int i = 0; i < t_count; i++)
         t_images_v[i] = &t_images[i * 784];
+    
+    // Augment test images too
+    if (augmentation_factor > 1)
+    {
+        printf("Augmenting training data by a factor of %d...", augmentation_factor);
+        fflush(stdout);
+    }
+    int count = t_count * augmentation_factor;
+    uint8_t *labels = augment_labels(t_labels, t_count, augmentation_factor);
+    uint8_t *images = augment_images(t_images, t_count, augmentation_factor);
+    uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
+    
+    for (int i = 0; i < count; i++)
+        images_v[i] = &images[i * 784];
+    if (augmentation_factor > 1)
+        printf("done!\n");
+
 
     int n_inputs = head->biases.height;
     node *aux = head;
@@ -281,18 +298,18 @@ void test_model(node *head)
     matrix input = matrix_create(n_inputs, 1);
     matrix expected = matrix_create(n_outputs, 1);
     matrix output;
-    for (int i = 0; i < t_count; i++)
+    for (int i = 0; i < count; i++)
     {
         confidence = 0;
 
         // input creation
         for (int k = 0; k < n_inputs; k++)
         {
-            input.matrix[k][0] = (double) t_images_v[i][k];
+            input.matrix[k][0] = (double) images_v[i][k];
         }
 
         expected = matrix_zero(expected);
-        expected.matrix[t_labels[i]][0] = 1;
+        expected.matrix[labels[i]][0] = 1;
 
         // processing
         output = dl_process(head, input);
@@ -309,19 +326,22 @@ void test_model(node *head)
         }
         
         // counting
-        correct_answers += (choice == t_labels[i]);
+        correct_answers += (choice == labels[i]);
         avg_cost += dl_cost(output, expected);
 
         matrix_free(output);
     }
-    avg_cost /= t_count;
-    printf("\rCorrect answers: %d/%d = %.2f%%\tAvg cost: %.4lf\n", correct_answers, t_count, (double) correct_answers / t_count * 100.0, avg_cost);
+    avg_cost /= count;
+    printf("\rCorrect answers: %d/%d = %.2f%%\tAvg cost: %.4lf\n", correct_answers, count, (double) correct_answers / count * 100.0, avg_cost);
 
     matrix_free(input);
     matrix_free(expected);
     free(t_labels);
     free(t_images);
     free(t_images_v);
+    free(labels);
+    free(images);
+    free(images_v);
 }
 
 void help(char **argv)
@@ -340,8 +360,8 @@ void help(char **argv)
         -e <count>      Specify the number of training rounds (epochs) over the shuffled training set.\n\
                         Default is 10.\n\
         -h              Show this help menu.\n\
-        -g <factor>     Specify how many times to augment the data. Default is 5. To disable use\n\
-                        -g 1.\n\
+        -g <factor>     Specify how many times to augment the data. Default for training is 5. To\n\
+                        disable use -g 1.\n\
         -c <filename>   Continue training a saved model, if -f is not specified, the file is overwritten.\n\
 \n\
 Example: %s -l 100 -l 50 -a 0.2 -e 15 -f myDLModel\n";
@@ -367,6 +387,7 @@ int main(int argc, char **argv)
     int batch_size = 100;
     // Augment data
     int augmentation_factor = 5;
+    char augmentflag = 0;
     
     int c;
     extern int optopt;
@@ -391,6 +412,7 @@ int main(int argc, char **argv)
             -b: specify batch size
             -h: help menu
             -g: specify the factor for data augmentation
+            -c: specify a saved model to continue training
 
         Not implemented:
     */
@@ -445,6 +467,7 @@ int main(int argc, char **argv)
             help(argv);
             return 0;
         case 'g':
+            augmentflag = 1;
             augmentation_factor = abs(atoi(optarg));
             if (!augmentation_factor)
             {
@@ -481,7 +504,10 @@ int main(int argc, char **argv)
         if (head)
         {
             dl_print_structure(head);
-            test_model(head);
+            if (augmentflag)
+                test_model(head, augmentation_factor);
+            else
+                test_model(head, 1);
             dl_dump(head, filename);
             dl_free(head);
         }
@@ -646,7 +672,7 @@ int main(int argc, char **argv)
     dl_dump(head, filename);
 
     // Test model
-    test_model(head);
+    test_model(head, augmentation_factor);
     
     // Clean up
     matrix_free(input);
