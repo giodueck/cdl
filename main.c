@@ -4,11 +4,20 @@
 #include <ctype.h>
 #include <string.h>
 #include "nn_tools.h"
-#include "swap.h"
 #include "getopt.h"
+#include <inttypes.h>
 
 // range of values in the dataset
 const int minval = 0, maxval = 255;
+
+// Swap endianness of an int32
+int32_t swap_int32(int32_t n)
+{
+    return (n & 0xFF000000) >> 24
+         | (n & 0x00FF0000) >> 8
+         | (n & 0x0000FF00) << 8
+         | (n & 0x000000FF) << 24;
+}
 
 int get_len(const char *filename)
 {
@@ -319,7 +328,7 @@ void help(char **argv)
 {
     const char *msg =
 "Usage:  %s [-l <size>] [-f <filename>] [-t <filename>]\n\
-        [-a <rate>] [-e <count>] [-b <count>] [-h] [-g <factor>]\n\
+        [-a <rate>] [-e <count>] [-b <count>] [-h] [-g <factor>] [-c <filename>]\n\
 \n\
         -a <rate>       Specify a learning rate. Default is 0.15\n\
         -b <count>      Specify the size of each batch of training images used in stochastic\n\
@@ -333,6 +342,7 @@ void help(char **argv)
         -h              Show this help menu.\n\
         -g <factor>     Specify how many times to augment the data. Default is 5. To disable use\n\
                         -g 1.\n\
+        -c <filename>   Continue training a saved model, if -f is not specified, the file is overwritten.\n\
 \n\
 Example: %s -l 100 -l 50 -a 0.2 -e 15 -f myDLModel\n";
 
@@ -347,8 +357,8 @@ int main(int argc, char **argv)
     int *sizes = (int*) malloc(sizeof(int));
     const int n_inputs = 784;
     const int n_outputs = 10;
-    char filename[FILENAME_MAX];
-    sprintf(filename, "dl-%ld.dld", (long) time(0));
+    char filename[FILENAME_MAX] = "\0";
+    char from_filename[FILENAME_MAX] = "\0";
     // learning rate
     double alpha = 0.15;
     // Train the model several times over shuffled versions of the same dataset
@@ -385,7 +395,7 @@ int main(int argc, char **argv)
         Not implemented:
     */
 
-    while ((c = getopt(argc, argv, "l:f:t:a:e:b:hg:")) != -1)
+    while ((c = getopt(argc, argv, "l:f:t:a:e:b:hg:c:")) != -1)
     {
         switch (c)
         {
@@ -396,7 +406,9 @@ int main(int argc, char **argv)
             break;
         case 'f':
             strcpy(filename, optarg);
-            strcat(filename, ".dld");
+            int len = strlen(filename);
+            if (strcmp(filename + len - 4, ".dld") != 0)
+                strcat(filename, ".dld");
             break;
         case 't':
             testflag = 1;
@@ -440,6 +452,9 @@ int main(int argc, char **argv)
                 help(argv);
                 return 1;
             }
+            break;
+        case 'c':
+            strcpy(from_filename, optarg);
             break;
         case ':':
             fprintf(stderr, "Option -%c requires an argument\n", optopt);
@@ -519,7 +534,17 @@ int main(int argc, char **argv)
     // Create Neural Network
     node *head;
 
-    head = dl_create(n_inputs, n_layers, sizes);
+    if (from_filename[0] == '\0')
+    {
+        head = dl_create(n_inputs, n_layers, sizes);
+    } else
+    {
+        head = dl_load(from_filename);
+        if (!head)
+            exit(1);
+        if (filename[0] == '\0')
+            sprintf(filename, from_filename);
+    }
     if (dl_check(head) < n_layers + 1)
     {
         fprintf(stderr, "Network creation: %d layers found, %d expected.\n", dl_check(head), n_layers + 1);
@@ -616,6 +641,8 @@ int main(int argc, char **argv)
     }
 
     // Save model
+    if (filename[0] == '\0')
+        sprintf(filename, "dl-%ld.dld", (long) time(0));
     dl_dump(head, filename);
 
     // Test model
