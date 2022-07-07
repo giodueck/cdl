@@ -514,7 +514,7 @@ int main(int argc, char **argv)
 
     printf("Total training images: %d\n", count);
     
-    // srand(time(0));
+    srand(time(0));
 
     // Create Neural Network
     node *head;
@@ -526,6 +526,7 @@ int main(int argc, char **argv)
         return 0;
     }
     dl_print_structure(head);
+    free(sizes);
 
     // Store average cost over batches and limit how many are processed
     double avg_cost;
@@ -626,7 +627,6 @@ int main(int argc, char **argv)
 
     dl_free(head);
 
-    free(sizes);
     free(costs);
     free(training_labels);
     free(training_images);

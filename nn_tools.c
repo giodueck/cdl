@@ -379,7 +379,7 @@ int dl_structure_str(node *head, char *buf, int len)
     sprintf(auxbuf, "%d", head->biases.height);
     while ((head = head->next)) // go to next layer until it is null
     {
-        sprintf(auxbuf, "%s-%d", auxbuf, head->biases.height);
+        snprintf(auxbuf, BUFSIZ, "%s-%d", auxbuf, head->biases.height);
     }
 
     int i;
@@ -601,8 +601,6 @@ node *dl_copy(node *head)
 // Does not use recursion to be able to use GPU acceleration
 matrix dl_process(node *in_node, matrix input)
 {
-    matrix act, der_act;
-
     // Error checking
     if (in_node->prev == NULL && !dl_check(in_node))
     {
@@ -615,34 +613,31 @@ matrix dl_process(node *in_node, matrix input)
         return NULL_MATRIX;
     }
 
-    input = matrix_copy(input);
+    matrix act;
+    node *tail = in_node;
+    matrix_init(in_node->last_activations, input.matrix);
+    in_node = in_node->next;
     while(in_node)
     {
-        // If the current layer is not the input layer, do calculation, else pass on the input
-        if (in_node->prev != NULL)
-        {
-            // act is the vector of neuron activations for this layer,
-            // for the head it is the input, for any other layer, the result of this calculation
-            act = matrix_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
-
-            // der_act, derivated activations, is used for backpropagation and not needed for the input layer
-            der_act = matrix_derivated_sigmoid(matrix_add(matrix_mult(in_node->weights, input), in_node->biases));
-            matrix_init(in_node->der_last_activations, der_act.matrix);
-            matrix_free(der_act);
-        }
-        else
-            act = matrix_copy(input);
-        
+        act = matrix_add(matrix_mult(in_node->weights, in_node->prev->last_activations), in_node->biases);
         matrix_init(in_node->last_activations, act.matrix);
+        matrix_init(in_node->der_last_activations, act.matrix);
+        matrix_free(act);
+
+        // act is the vector of neuron activations for this layer,
+        // for the head it is the input, for any other layer, the result of this calculation
+        matrix_sigmoid(in_node->last_activations);
+
+        // der_act, derivated activations, is used for backpropagation and not needed for the input layer
+        matrix_derivated_sigmoid(in_node->der_last_activations);
 
         // go to next layer
-        matrix_free(input);
-        input = act;
+        tail = in_node;
         in_node = in_node->next;
     }
 
     // input will be the result, not the original input
-    return input;
+    return matrix_copy(tail->last_activations);
 }
 
 // Calculates the cost for the result
