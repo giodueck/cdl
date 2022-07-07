@@ -7,6 +7,8 @@
 
 #include "nn_tools.h"
 
+#define NULL_MATRIX (matrix) { .height = 0, .width = 0, .matrix = NULL }
+
 // Returns 0 matrix struct with width number of columns and height number of rows
 matrix matrix_create(int height, int width)
 {

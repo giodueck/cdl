@@ -215,7 +215,7 @@ void shuffle_images(uint8_t **images_v, uint8_t *labels, int len)
 
 // Augment (distort) images in the given set
 // Allocates enough space to images_dst and labels_dst to store the new set, including the original images
-void augment_images(uint8_t *images_dst, uint8_t *images, uint8_t *labels_dst, uint8_t *labels, int count, int factor)
+void augment_images(uint8_t **images_dst, uint8_t *images, uint8_t **labels_dst, uint8_t *labels, int count, int factor)
 {
     uint8_t *aug_images = (uint8_t*) malloc(sizeof(uint8_t*) * 784 * count * factor);
     uint8_t *aug_labels = (uint8_t*) malloc(sizeof(uint8_t) * count * factor);
@@ -240,8 +240,8 @@ void augment_images(uint8_t *images_dst, uint8_t *images, uint8_t *labels_dst, u
         }
     }
     
-    images_dst = aug_images;
-    labels_dst = aug_labels;
+    *images_dst = aug_images;
+    *labels_dst = aug_labels;
 }
 
 void test_model(node *head, int augmentation_factor)
@@ -263,8 +263,8 @@ void test_model(node *head, int augmentation_factor)
     }
     int count = t_count * augmentation_factor;
     
-    uint8_t *images, *labels;
-    augment_images(images, t_images, labels, t_labels, t_count, augmentation_factor);
+    uint8_t *images = NULL, *labels = NULL;
+    augment_images(&images, t_images, &labels, t_labels, t_count, augmentation_factor);
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
     
     for (int i = 0; i < count; i++)
@@ -533,8 +533,8 @@ int main(int argc, char **argv)
     if (augmentation_factor > 1) printf("Augmenting training data by a factor of %d...", augmentation_factor);
     fflush(stdout);
     int count = training_count * augmentation_factor;
-    uint8_t *labels, *images;
-    augment_images(images, training_images, labels, training_labels, count, augmentation_factor);
+    uint8_t *labels = NULL, *images = NULL;
+    augment_images(&images, training_images, &labels, training_labels, count, augmentation_factor);
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
     
     // Every *images_v points to one array of 784 pixels, or one image
