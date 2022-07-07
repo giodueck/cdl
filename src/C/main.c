@@ -213,30 +213,19 @@ void shuffle_images(uint8_t **images_v, uint8_t *labels, int len)
     }
 }
 
-uint8_t *augment_labels(uint8_t *labels, int count, int factor)
-{
-    uint8_t *aug_labels = (uint8_t*) malloc(sizeof(uint8_t) * count * factor);
-
-    for (int i = 0; i < count; i++)
-    {
-        for (int j = 0; j < factor; j++)
-        {
-            aug_labels[i * factor + j] = labels[i];
-        }
-    }
-    
-    return aug_labels;
-}
-
-uint8_t *augment_images(uint8_t *images, int count, int factor)
+// Augment (distort) images in the given set
+// Allocates enough space to images_dst and labels_dst to store the new set, including the original images
+void augment_images(uint8_t *images_dst, uint8_t *images, uint8_t *labels_dst, uint8_t *labels, int count, int factor)
 {
     uint8_t *aug_images = (uint8_t*) malloc(sizeof(uint8_t*) * 784 * count * factor);
+    uint8_t *aug_labels = (uint8_t*) malloc(sizeof(uint8_t) * count * factor);
     uint8_t *im0, *im1, *im2;
 
     for (int i = 0; i < count; i++)
     {
         for (int j = 0; j < factor; j++)
         {
+            aug_labels[i * factor + j] = labels[i];
             if (j > 0)
             {
                 im0 = dl_rotate_image_rand(&images[i * 784]);
@@ -251,7 +240,8 @@ uint8_t *augment_images(uint8_t *images, int count, int factor)
         }
     }
     
-    return aug_images;
+    images_dst = aug_images;
+    labels_dst = aug_labels;
 }
 
 void test_model(node *head, int augmentation_factor)
@@ -272,8 +262,9 @@ void test_model(node *head, int augmentation_factor)
         fflush(stdout);
     }
     int count = t_count * augmentation_factor;
-    uint8_t *labels = augment_labels(t_labels, t_count, augmentation_factor);
-    uint8_t *images = augment_images(t_images, t_count, augmentation_factor);
+    
+    uint8_t *images, *labels;
+    augment_images(images, t_images, labels, t_labels, t_count, augmentation_factor);
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
     
     for (int i = 0; i < count; i++)
@@ -397,11 +388,9 @@ int main(int argc, char **argv)
 
     char testflag = 0;
 
-    /*
-    Files: invent some magic number to put in front of the file, so I can identify valid files
-    C  D  L  D
-    67 68 76 67
+    srand(time(0));
 
+    /*
     Args:
         Implemented:
             -l <size>: specify hidden layer size, can specify multiple in order
@@ -544,8 +533,8 @@ int main(int argc, char **argv)
     if (augmentation_factor > 1) printf("Augmenting training data by a factor of %d...", augmentation_factor);
     fflush(stdout);
     int count = training_count * augmentation_factor;
-    uint8_t *labels = augment_labels(training_labels, training_count, augmentation_factor);
-    uint8_t *images = augment_images(training_images, training_count, augmentation_factor);
+    uint8_t *labels, *images;
+    augment_images(images, training_images, labels, training_labels, count, augmentation_factor);
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
     
     // Every *images_v points to one array of 784 pixels, or one image
@@ -555,8 +544,6 @@ int main(int argc, char **argv)
 
     printf("Total training images: %d\n", count);
     
-    srand(time(0));
-
     // Create Neural Network
     node *head;
 
