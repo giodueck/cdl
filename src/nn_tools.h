@@ -153,15 +153,15 @@ void dl_backpropagation(node *head, matrix loss, double alpha);
 // Data transformation code
 
 // Randomly rotate the image to create a new one
-uint8_t *dl_rotate_image_rand(uint8_t *image);
+void dl_rotate_image_rand(uint8_t *dst, uint8_t *image);
 
 // Randomly shift the image vertically and horizontally to create a new one
-uint8_t *dl_shift_image_rand(uint8_t *image);
+void dl_shift_image_rand(uint8_t *dst, uint8_t *image);
 
 // Randomly scale the image up or down to create a new one
 // uint8_t *dl_zoom_image_rand(uint8_t *image);
 
 // Randomly apply shear to the image to create a new one
-uint8_t *dl_shear_image_rand(uint8_t *image);
+void dl_shear_image_rand(uint8_t *dst, uint8_t *image);
 
 #endif // NN_TOOLS_H

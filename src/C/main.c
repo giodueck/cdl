@@ -219,7 +219,7 @@ void augment_images(uint8_t **images_dst, uint8_t *images, uint8_t **labels_dst,
 {
     uint8_t *aug_images = (uint8_t*) malloc(sizeof(uint8_t*) * 784 * count * factor);
     uint8_t *aug_labels = (uint8_t*) malloc(sizeof(uint8_t) * count * factor);
-    uint8_t *im0, *im1, *im2;
+    uint8_t *im = (uint8_t*) malloc(sizeof(uint8_t*) * 784);
 
     for (int i = 0; i < count; i++)
     {
@@ -228,13 +228,11 @@ void augment_images(uint8_t **images_dst, uint8_t *images, uint8_t **labels_dst,
             aug_labels[i * factor + j] = labels[i];
             if (j > 0)
             {
-                im0 = dl_rotate_image_rand(&images[i * 784]);
-                im1 = dl_shift_image_rand(im0);
-                im2 = dl_shear_image_rand(im1);
-                memcpy(&aug_images[(i * factor + j) * 784], im2, sizeof(uint8_t) * 784);
-                free(im0);
-                free(im1);
-                free(im2);
+                // juggling the destination and source like this avoids using extra memory for every transformation
+                dl_rotate_image_rand(im, &aug_images[(i * factor + j) * 784]);
+                dl_shift_image_rand(&aug_images[(i * factor + j) * 784], im);
+                dl_shear_image_rand(im, &aug_images[(i * factor + j) * 784]);
+                memcpy(&aug_images[(i * factor + j) * 784], im, sizeof(uint8_t) * 784);
             } else
                 memcpy(&aug_images[(i * factor + j) * 784], &images[i * 784], sizeof(uint8_t) * 784);
         }

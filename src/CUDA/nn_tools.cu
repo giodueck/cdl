@@ -823,12 +823,11 @@ void place_aliased_pixel(uint8_t *image, double x, double y, int value)
 }
 
 // Randomly rotate the image to create a new one
-uint8_t *dl_rotate_image_rand(uint8_t *image)
+void dl_rotate_image_rand(uint8_t *dst, uint8_t *image)
 {
     int x, y;
     double r, phi, x_, y_;
-    uint8_t *new_image = (uint8_t*) malloc(sizeof(uint8_t) * 784);
-    memset(new_image, 0, sizeof(uint8_t) * 784);
+    memset(dst, 0, sizeof(uint8_t) * 784);
     double rot = randfrom(-DL_ROTATIONMAX, +DL_ROTATIONMAX);
 
     for (int i = 0; i < 28; i++)
@@ -845,17 +844,15 @@ uint8_t *dl_rotate_image_rand(uint8_t *image)
             x_ += 14;
             y_ += 14;
             // set new pixel
-            place_aliased_pixel(new_image, x_, y_, image[i * 28 + j]);
+            place_aliased_pixel(dst, x_, y_, image[i * 28 + j]);
         }
     }
-    return new_image;
 }
 
 // Randomly shift the image vertically and horizontally to create a new one
-uint8_t *dl_shift_image_rand(uint8_t *image)
+void dl_shift_image_rand(uint8_t *dst, uint8_t *image)
 {
-    uint8_t *new_image = (uint8_t*) malloc(sizeof(uint8_t) * 784);
-    memset(new_image, 0, sizeof(uint8_t) * 784);
+    memset(dst, 0, sizeof(uint8_t) * 784);
     int di = rand() % (2 * DL_SHIFTMAX) - DL_SHIFTMAX;
     int dj = rand() % (2 * DL_SHIFTMAX) - DL_SHIFTMAX;
     int is, js;
@@ -867,10 +864,9 @@ uint8_t *dl_shift_image_rand(uint8_t *image)
             is = i + di;
             js = j + dj;
             if (is * 28 + js >= 0 && is * 28 + js < 784)
-                new_image[is * 28 + js] = image[i * 28 + j];
+                dst[is * 28 + js] = image[i * 28 + j];
         }
     }
-    return new_image;
 }
 
 // Randomly scale the image up or down to create a new one
@@ -880,10 +876,9 @@ uint8_t *dl_shift_image_rand(uint8_t *image)
 // }
 
 // Randomly apply shear to the image to create a new one
-uint8_t *dl_shear_image_rand(uint8_t *image)
+void dl_shear_image_rand(uint8_t *dst, uint8_t *image)
 {
-    uint8_t *new_image = (uint8_t*) malloc(sizeof(uint8_t) * 784);
-    memset(new_image, 0, sizeof(uint8_t) * 784);
+    memset(dst, 0, sizeof(uint8_t) * 784);
     double angle = randfrom(0, 2 * M_PI);
     double shear_val = randfrom(0, DL_SHEARMAX);
     double x_, y_;
@@ -894,8 +889,7 @@ uint8_t *dl_shear_image_rand(uint8_t *image)
         {
             x_ = j + i * cos(angle) * shear_val;
             y_ = i + j * sin(angle) * shear_val;
-            place_aliased_pixel(new_image, x_, y_, image[i * 28 + j]);
+            place_aliased_pixel(dst, x_, y_, image[i * 28 + j]);
         }
     }
-    return new_image;
 }
