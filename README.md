@@ -14,13 +14,14 @@ This also opens up the possibility to use this model in a olc::PixelGameEngine p
 
 # Usage
 
-Initially the program is limited to hard-coded structures, specifically a 2-hidden-layer setup.
+For a demo just run the program without arguments to train a model with 2 hidden layers of 16 neurons for 10 epochs with 5-fold data augmentation, from the project root:\
+`./build/release/cdl`\
+or for debug builds:\
+`./build/debug/cdl`
 
-I plan to add command-line parameters to customize the model trained, and several other utilities to test existing networks.
+The full options and help can be accessed using `./cdl -h`
 
-To compile I used\
-```gcc -o cdl -g test_dl.c nn_tools.c getopt.c -lm -O2```\
-but the flags `-g` and `-O2` are optional, for debugging and optimizations respectively.
+To compile see instructions in the src directory for the version needed, C or CUDA C.
 
 # Samples
 
