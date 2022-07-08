@@ -1,5 +1,13 @@
+# VSCode
 .vscode
-*.exe
+
+# Build
 *.out
+*.exe
+*.exp
+*.lib
+*.pdb
+
+# Project specific
 test*
 *.dld

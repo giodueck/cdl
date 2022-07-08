@@ -370,6 +370,7 @@ int main(int argc, char **argv)
     const int n_outputs = 10;
     char filename[FILENAME_MAX] = "\0";
     char from_filename[FILENAME_MAX] = "\0";
+    int len = 0;
     // learning rate
     double alpha = 0.15;
     // Train the model several times over shuffled versions of the same dataset
@@ -417,7 +418,7 @@ int main(int argc, char **argv)
             break;
         case 'f':
             strcpy(filename, optarg);
-            int len = strlen(filename);
+            len = strlen(filename);
             if (strcmp(filename + len - 4, ".dld") != 0)
                 strcat(filename, ".dld");
             break;
