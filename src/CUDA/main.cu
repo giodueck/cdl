@@ -258,7 +258,7 @@ void test_model(node *head, int augmentation_factor)
     // Augment test images too
     if (augmentation_factor > 1)
     {
-        printf("Augmenting training data by a factor of %d...", augmentation_factor);
+        printf("Augmenting testing data by a factor of %d...", augmentation_factor);
         fflush(stdout);
     }
     int count = t_count * augmentation_factor;
