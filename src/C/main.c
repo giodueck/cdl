@@ -262,7 +262,6 @@ void test_model(node *head, int augmentation_factor)
         fflush(stdout);
     }
     int count = t_count * augmentation_factor;
-    
     uint8_t *images = NULL, *labels = NULL;
     augment_images(&images, t_images, &labels, t_labels, t_count, augmentation_factor);
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
@@ -346,6 +345,8 @@ void help(char **argv)
                         gradient descent. Default is 100\n\
         -f <filename>   Specify the filename of the resulting model file. The '.cdl' extension\n\
                         is added automatically.\n\
+        -t <filename>   Specify a saved model to test. If -g is also specified, the model is tested\n\
+                        against augmented data.\n\
         -l <size>       Can be used multiple times. Specify the size of the next hidden layer.\n\
                         Each layer is added in order of appearance.\n\
         -e <count>      Specify the number of training rounds (epochs) over the shuffled training set.\n\
@@ -535,7 +536,7 @@ int main(int argc, char **argv)
     fflush(stdout);
     int count = training_count * augmentation_factor;
     uint8_t *labels = NULL, *images = NULL;
-    augment_images(&images, training_images, &labels, training_labels, count, augmentation_factor);
+    augment_images(&images, training_images, &labels, training_labels, training_count, augmentation_factor);
     uint8_t **images_v = (uint8_t**) malloc(sizeof(uint8_t*) * count);
     
     // Every *images_v points to one array of 784 pixels, or one image
@@ -658,9 +659,10 @@ int main(int argc, char **argv)
     if (filename[0] == '\0')
         sprintf(filename, "dl-%ld.dld", (long) time(0));
     dl_dump(head, filename);
+    printf("Saved model as %s\n", filename);
 
     // Test model
-    test_model(head, augmentation_factor);
+    test_model(head, 1);
     
     // Clean up
     matrix_free(input);
