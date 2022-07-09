@@ -21,10 +21,7 @@ matrix matrix_create(int height, int width)
     if (!A.matrix)
     {
         fprintf(stderr, "matric_create: Allocation error\n");
-        A.height = 0;
-        A.width = 0;
-        A.matrix = NULL;
-        return A;
+        return NULL_MATRIX;
     }
 
     A.matrix[0] = (double *) malloc(sizeof(double) * A.height * A.width);
@@ -32,10 +29,7 @@ matrix matrix_create(int height, int width)
     {
         fprintf(stderr, "matric_create: Allocation error\n");
         free(A.matrix);
-        A.height = 0;
-        A.width = 0;
-        A.matrix = NULL;
-        return A;
+        return NULL_MATRIX;
     }
     for (int i = 1; i < A.height; i++)
     {
@@ -284,7 +278,9 @@ node *dl_create(int n_inputs, int n_layers, int *sizes)
     }
     nodes[i + 1] = dl_create_node(DL_OUTPUT, sizes[i], nodes[i]);
 
-    return nodes[0];
+    node *node = nodes[0];
+    free(nodes);
+    return node;
 }
 
 // Checks if the network is valid
@@ -674,8 +670,6 @@ void dl_adjust(node *head)
     {
         matrix_sub(head->weights, matrix_scalar_mult(head->ca_weights, (double) 1 / head->n_ca));
         matrix_sub(head->biases, matrix_scalar_mult(head->ca_biases, (double) 1 / head->n_ca));
-        // matrix_sub(head->weights, head->ca_weights);
-        // matrix_sub(head->biases, head->ca_biases);
         matrix_zero(head->ca_weights);
         matrix_zero(head->ca_biases);
         head->n_ca = 0;

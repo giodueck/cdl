@@ -542,29 +542,38 @@ int main(int argc, char **argv)
         images_v[i] = &images[i * 784];
     if (augmentation_factor > 1) printf("done!\n");
 
-    printf("Total training images: %d\n", count);
+    printf("Total training images: %d\n\n", count);
     
     // Create Neural Network
     node *head;
 
     if (from_filename[0] == '\0')
     {
+        printf("Creating network...");
+        fflush(stdout);
         head = dl_create(n_inputs, n_layers, sizes);
     } else
     {
+        printf("Loading network...");
+        fflush(stdout);
         head = dl_load(from_filename);
         if (!head)
             exit(1);
         if (filename[0] == '\0')
             sprintf(filename, from_filename);
     }
+
     if (dl_check(head) < n_layers + 1)
     {
+        printf("\n");
         fprintf(stderr, "Network creation: %d layers found, %d expected.\n", dl_check(head), n_layers + 1);
         return 0;
     }
+
+    printf("done!\n");
     dl_print_structure(head);
     free(sizes);
+    printf("\n");
 
     // Store average cost over batches and limit how many are processed
     double avg_cost;
