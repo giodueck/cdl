@@ -13,6 +13,7 @@
 #include <cuda_device_runtime_api.h>
 
 const matrix NULL_MATRIX = { 0, 0, NULL };
+__device__ __constant__ matrix D_NULL_MATRIX = { 0, 0, NULL };
 
 // Returns 0 matrix struct with width number of columns and height number of rows
 matrix matrix_create(int height, int width)
@@ -26,21 +27,15 @@ matrix matrix_create(int height, int width)
     if (!A.matrix)
     {
         fprintf(stderr, "matric_create: Allocation error\n");
-        A.height = 0;
-        A.width = 0;
-        A.matrix = NULL;
-        return A;
+        return NULL_MATRIX;
     }
 
     A.matrix[0] = (double *) malloc(sizeof(double) * A.height * A.width);
-    if (!A.matrix)
+    if (!A.matrix[0])
     {
         fprintf(stderr, "matric_create: Allocation error\n");
         free(A.matrix);
-        A.height = 0;
-        A.width = 0;
-        A.matrix = NULL;
-        return A;
+        return NULL_MATRIX;
     }
     for (int i = 1; i < A.height; i++)
     {
@@ -48,6 +43,34 @@ matrix matrix_create(int height, int width)
     }
 
     matrix_zero(A);
+    return A;
+}
+
+__device__ matrix d_matrix_create(int height, int width)
+{
+    matrix A;
+    A.height = height;
+    A.width = width;
+    A.matrix = NULL;
+
+    cudaMalloc(&A.matrix, sizeof(double *) * A.height);
+    if (!A.matrix)
+    {
+        return D_NULL_MATRIX;
+    }
+
+    cudaMalloc(&A.matrix[0], sizeof(double) * A.height * A.width);
+    if (!A.matrix[0])
+    {
+        free(A.matrix);
+        return D_NULL_MATRIX;
+    }
+    for (int i = 1; i < A.height; i++)
+    {
+        A.matrix[i] = A.matrix[0] + i * A.width;
+    }
+
+    d_matrix_zero(A);
     return A;
 }
 
@@ -62,6 +85,19 @@ int matrix_free(matrix A)
 
     free(A.matrix[0]);
     free(A.matrix);
+    A.matrix = NULL;
+    return 0;
+}
+
+__device__ int d_matrix_free(matrix A)
+{
+    if (A.matrix == NULL)
+    {
+        return 1;
+    }
+
+    cudaFree(A.matrix[0]);
+    cudaFree(A.matrix);
     A.matrix = NULL;
     return 0;
 }
@@ -207,6 +243,15 @@ matrix matrix_init_rand(matrix A, double min, double max)
     return A;
 }
 
+__device__ matrix d_matrix_init_rand(matrix A, double min, double max, unsigned long long seed)
+{
+    for (int i = 0; i < A.height; i++)
+        for (int j = 0; j < A.width; j++)
+            A.matrix[i][j] = randfrom(min, max, i * A.width + j, seed);
+
+    return A;
+}
+
 // Copies mat into A.matrix, returns the same matrix
 // mat[0] should point to a contiguous block of memory
 matrix matrix_init(matrix A, double **mat)
@@ -228,6 +273,13 @@ matrix matrix_copy(matrix from)
 matrix matrix_zero(matrix A)
 {
     memset(A.matrix[0], 0, sizeof(double) * A.height * A.width);
+
+    return A;
+}
+
+__device__ matrix d_matrix_zero(matrix A)
+{
+    cudaMemsetAsync(A.matrix[0], 0, sizeof(double) * A.height * A.width, 0);
 
     return A;
 }
@@ -280,6 +332,64 @@ node *dl_create_node(int type, int size, node *prev)
     return n;
 }
 
+__global__ void dl_create_node_CUDA(node *d_n, int type, int size, node *d_prev, unsigned long long seed)
+{
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+    {
+        d_n->next = NULL; // will be overwritten if a node is created with n as prev
+        d_n->self = d_n;
+        d_n->n_ca = 0;
+
+        switch (type)
+        {
+        case DL_INPUT:
+            d_n->weights = d_matrix_create(size, 1);
+            d_n->ca_weights = d_matrix_create(size, 1);
+            d_n->biases = d_matrix_create(size, 1);
+            d_n->ca_biases = d_matrix_create(size, 1);
+            d_n->last_activations = d_matrix_create(size, 1);
+            d_n->der_last_activations = d_matrix_create(size, 1);
+            d_n->prev = NULL;
+            break;
+
+        case DL_HIDDEN:
+        case DL_OUTPUT:
+            d_n->weights = d_matrix_init_rand(d_matrix_create(size, d_prev->weights.height), DL_RANDMIN, DL_RANDMAX, seed);
+            d_n->biases = d_matrix_init_rand(d_matrix_create(size, 1), DL_RANDMIN, DL_RANDMAX, seed);
+            d_n->ca_weights = d_matrix_create(size, d_prev->weights.height);
+            d_n->ca_biases = d_matrix_create(size, 1);
+            d_n->last_activations = d_matrix_create(size, 1);
+            d_n->der_last_activations = d_matrix_create(size, 1);
+            d_n->prev = d_prev;
+            d_prev->next = d_n->self;
+            break;
+        }
+    }
+}
+
+node *dl_create_node_GPU(int type, int size, node *d_prev, unsigned long long seed)
+{
+    if (type != DL_INPUT && d_prev == NULL)
+    {
+        fprintf(stderr, "dl_create_node_GPU: Previous layer not given.\n");
+        exit(1);
+    }
+    if (type != DL_INPUT && type != DL_HIDDEN && type != DL_OUTPUT)
+    {
+        fprintf(stderr, "dl_create_node_GPU: Invalid type.\n");
+        exit(1);
+    }
+
+    node *d_n;
+    CUDA_CALL(cudaMalloc(&d_n, sizeof(node)));
+
+    dl_create_node_CUDA<<<1, 1>>>(d_n, type, size, d_prev, seed);
+    CUDA_CALL(cudaPeekAtLastError());
+    CUDA_CALL(cudaDeviceSynchronize());
+
+    return d_n;
+}
+
 // Creates n_layers nodes + 1 input node, and returns a pointer to this input node
 // n_layers does no include the input layer, but includes the output layer
 // sizes is an array of layer sizes, with n_layers amount of items and the last item being the output size
@@ -296,7 +406,27 @@ node *dl_create(int n_inputs, int n_layers, int *sizes)
     }
     nodes[i + 1] = dl_create_node(DL_OUTPUT, sizes[i], nodes[i]);
 
-    return nodes[0];
+    node *node = nodes[0];
+    free(nodes);
+    return node;
+}
+
+node *dl_create_GPU(int n_inputs, int n_layers, int *sizes, unsigned long long seed)
+{
+    node **d_nodes = (node **)malloc(sizeof(node*) * (n_layers + 1));
+
+    d_nodes[0] = dl_create_node_GPU(DL_INPUT, n_inputs, NULL, seed);
+
+    int i;
+    for (i = 0; i < n_layers - 1; i++)
+    {
+        d_nodes[i + 1] = dl_create_node_GPU(DL_HIDDEN, sizes[i], d_nodes[i], seed * (i + 123));
+    }
+    d_nodes[i + 1] = dl_create_node_GPU(DL_OUTPUT, sizes[i], d_nodes[i], seed * (n_layers + 123));
+
+    node *d_node = d_nodes[0];
+    free(d_nodes);
+    return d_node;
 }
 
 // Checks if the network is valid
@@ -469,6 +599,37 @@ int dl_free(node *head)
     // if allocated
     if (head->self)
         free(head->self);
+    return 0;
+}
+
+__global__ void dl_free_CUDA(node *d_head)
+{
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+    {
+        while (d_head->next)
+        {
+            if (d_head->prev)
+                cudaFree(d_head->prev);
+            
+            d_matrix_free(d_head->biases);
+            d_matrix_free(d_head->ca_biases);
+            d_matrix_free(d_head->weights);
+            d_matrix_free(d_head->ca_weights);
+            d_matrix_free(d_head->last_activations);
+            d_matrix_free(d_head->der_last_activations);
+
+            d_head = d_head->next;
+        }
+
+        cudaFree(d_head);
+    }
+}
+
+int dl_free_GPU(node *d_head)
+{
+    dl_free_CUDA<<<1, 1>>>(d_head);
+    CUDA_CALL(cudaPeekAtLastError());
+    CUDA_CALL(cudaDeviceSynchronize());
     return 0;
 }
 
@@ -686,8 +847,6 @@ void dl_adjust(node *head)
     {
         matrix_sub(head->weights, matrix_scalar_mult(head->ca_weights, (double) 1 / head->n_ca));
         matrix_sub(head->biases, matrix_scalar_mult(head->ca_biases, (double) 1 / head->n_ca));
-        // matrix_sub(head->weights, head->ca_weights);
-        // matrix_sub(head->biases, head->ca_biases);
         matrix_zero(head->ca_weights);
         matrix_zero(head->ca_biases);
         head->n_ca = 0;

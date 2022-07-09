@@ -166,13 +166,24 @@ void dl_shear_image_rand(uint8_t *dst, uint8_t *image);
 
 #ifdef __NVCC__
 
-
 #define BLOCK_SIZE 32
 
 #define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
     printf("Error: %s at %s:%d\n",cudaGetErrorString(x),__FILE__,__LINE__); \
     exit(EXIT_FAILURE);}} while(0)
 
+// Device matrix functions
+__device__ matrix d_matrix_create(int height, int width);
+__device__ int d_matrix_free(matrix A);
+__device__ matrix d_matrix_zero(matrix A);
+__device__ matrix d_matrix_init_rand(matrix A, double min, double max, unsigned long long seed);
+
+// Network creation for GPU
+node *dl_create_node_GPU(int type, int size, node *d_prev, unsigned long long seed);
+node *dl_create_GPU(int n_inputs, int n_layers, int *sizes, unsigned long long seed);
+int dl_free_GPU(node *d_head);
+
+// Data augmentation
 __global__ void augment_images_CUDA(uint8_t *d_images_dst, uint8_t *d_images, int img_count, int aug_factor, unsigned long long seed);
 
 #else
