@@ -219,22 +219,28 @@ void augment_images(uint8_t **images_dst, uint8_t *images, uint8_t **labels_dst,
 {
     uint8_t *aug_images = (uint8_t*) malloc(sizeof(uint8_t*) * 784 * count * factor);
     uint8_t *aug_labels = (uint8_t*) malloc(sizeof(uint8_t) * count * factor);
-    uint8_t *im = (uint8_t*) malloc(sizeof(uint8_t*) * 784);
+    // uint8_t *im = (uint8_t*) malloc(sizeof(uint8_t*) * 784);
+
+    uint8_t *d_images, *d_aug_images;
+    CUDA_CALL(cudaMalloc(&d_images, sizeof(uint8_t) * 784 * count));
+    CUDA_CALL(cudaMalloc(&d_aug_images, sizeof(uint8_t) * 784 * count * factor));
+
+    CUDA_CALL(cudaMemcpy(d_images, images, sizeof(uint8_t) * 784 * count, cudaMemcpyHostToDevice));
+
+    unsigned int blocks = count * factor / BLOCK_SIZE;
+    augment_images_CUDA<<<blocks, BLOCK_SIZE>>>(d_aug_images, d_images, count, factor, time(0));
+    CUDA_CALL(cudaPeekAtLastError());
+    CUDA_CALL(cudaDeviceSynchronize());
+
+    CUDA_CALL(cudaMemcpy(aug_images, d_aug_images, sizeof(uint8_t) * 784 * count * factor, cudaMemcpyDeviceToHost));
+    CUDA_CALL(cudaFree(d_aug_images));
+    CUDA_CALL(cudaFree(d_images));
 
     for (int i = 0; i < count; i++)
     {
         for (int j = 0; j < factor; j++)
         {
             aug_labels[i * factor + j] = labels[i];
-            if (j > 0)
-            {
-                // juggling the destination and source like this avoids using extra memory for every transformation
-                dl_rotate_image_rand(im, &aug_images[(i * factor + j) * 784]);
-                dl_shift_image_rand(&aug_images[(i * factor + j) * 784], im);
-                dl_shear_image_rand(im, &aug_images[(i * factor + j) * 784]);
-                memcpy(&aug_images[(i * factor + j) * 784], im, sizeof(uint8_t) * 784);
-            } else
-                memcpy(&aug_images[(i * factor + j) * 784], &images[i * 784], sizeof(uint8_t) * 784);
         }
     }
     
@@ -268,7 +274,6 @@ void test_model(node *head, int augmentation_factor)
         images_v[i] = &images[i * 784];
     if (augmentation_factor > 1)
         printf("done!\n");
-
 
     int n_inputs = head->biases.height;
     node *aux = head;

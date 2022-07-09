@@ -164,4 +164,19 @@ void dl_shift_image_rand(uint8_t *dst, uint8_t *image);
 // Randomly apply shear to the image to create a new one
 void dl_shear_image_rand(uint8_t *dst, uint8_t *image);
 
+#ifdef __NVCC__
+#define NVCC_DEFINED 1
+
+#define BLOCK_SIZE 32
+
+#define CUDA_CALL(x) do { if((x) != cudaSuccess) { \
+    printf("Error: %s at %s:%d\n",cudaGetErrorString(x),__FILE__,__LINE__); \
+    exit(EXIT_FAILURE);}} while(0)
+
+__global__ void augment_images_CUDA(uint8_t *d_images_dst, uint8_t *d_images, int img_count, int aug_factor, unsigned long long seed);
+
+#else
+#define NVCC_DEFINED 0
+#endif
+
 #endif // NN_TOOLS_H

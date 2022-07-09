@@ -229,15 +229,15 @@ void augment_images(uint8_t **images_dst, uint8_t *images, uint8_t **labels_dst,
             if (j > 0)
             {
                 // juggling the destination and source like this avoids using extra memory for every transformation
-                dl_rotate_image_rand(im, &aug_images[(i * factor + j) * 784]);
-                dl_shift_image_rand(&aug_images[(i * factor + j) * 784], im);
-                dl_shear_image_rand(im, &aug_images[(i * factor + j) * 784]);
-                memcpy(&aug_images[(i * factor + j) * 784], im, sizeof(uint8_t) * 784);
+                dl_rotate_image_rand(&aug_images[(i * factor + j) * 784], &images[i * 784]);
+                dl_shift_image_rand(im, &aug_images[(i * factor + j) * 784]);
+                dl_shear_image_rand(&aug_images[(i * factor + j) * 784], im);
             } else
                 memcpy(&aug_images[(i * factor + j) * 784], &images[i * 784], sizeof(uint8_t) * 784);
         }
     }
     
+    free(im);
     *images_dst = aug_images;
     *labels_dst = aug_labels;
 }

@@ -7,26 +7,10 @@
 
 #include "nn_tools.h"
 
-#include <assert.h>
-#define cdpErrchk(ans) { cdpAssert((ans), __FILE__, __LINE__); }
-__device__ void cdpAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-    if (code != cudaSuccess)
-    {
-        printf("GPU kernel assert: %s %s %d\n", cudaGetErrorString(code), file, line);
-        if (abort) assert(0);
-    }
-}
-
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-    if (code != cudaSuccess) 
-    {
-        fprintf(stderr,"GPU assert: %s %s %d\n", cudaGetErrorString(code), file, line);
-        if (abort) exit(code);
-    }
-}
+#include <cuda.h>
+#include <cuda_runtime.h>
+#include <curand_kernel.h>
+#include <cuda_device_runtime_api.h>
 
 const matrix NULL_MATRIX = { 0, 0, NULL };
 
@@ -204,6 +188,13 @@ double randfrom(double min, double max)
     double range = (max - min);
     double div = RAND_MAX / range;
     return min + (rand() / div);
+}
+
+__device__ double randfrom(double min, double max, unsigned long long subsequence, unsigned long long offset)
+{
+    curandState_t state;
+    curand_init(1234, subsequence, offset, &state);
+    return min + curand_uniform_double(&state) * (max - min);
 }
 
 // Fills a matrix with random data, returns the same matrix
@@ -786,19 +777,19 @@ void dl_backpropagation(node *head, matrix loss, double alpha)
     matrix_free(loss);
 }
 
-void cart_to_polar(double x, double y, double *r, double *phi)
+__host__ __device__ void cart_to_polar(double x, double y, double *r, double *phi)
 {
     *r = sqrt(x*x + y*y);
     *phi = atan2(y, x);
 }
 
-void polar_to_cart(double r, double phi, double *x, double *y)
+__host__ __device__ void polar_to_cart(double r, double phi, double *x, double *y)
 {
     *x = r * cos(phi);
     *y = r * sin(phi);
 }
 
-void place_aliased_pixel(uint8_t *image, double x, double y, int value)
+__host__ __device__ void place_aliased_pixel(uint8_t *image, double x, double y, int value)
 {
     if (value == 0)
         return;
@@ -820,6 +811,79 @@ void place_aliased_pixel(uint8_t *image, double x, double y, int value)
         image[(y_ + 1) * 28 + x_] = (image[(y_ + 1) * 28 + x_] + value * xmodinv * ymod > 255) ? 255 : image[(y_ + 1) * 28 + x_] + value * xmodinv * ymod ;
     if (x_ + 1 >= 0 && y_ + 1 >= 0 && x_ + 1 < 28 && y_ + 1 < 28)
         image[(y_ + 1) * 28 + x_ + 1] = (image[(y_ + 1) * 28 + x_ + 1] + value * xmod * ymod > 255) ? 255 : image[(y_ + 1) * 28 + x_ + 1] + value * xmod * ymod ;
+}
+
+__global__ void augment_images_CUDA(uint8_t *d_images_dst, uint8_t *d_images, int img_count, int aug_factor, unsigned long long seed)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < img_count * aug_factor)
+    {
+        // Copy as is
+        if (idx % aug_factor == 0)
+        {
+            cudaMemcpyAsync(&d_images_dst[idx * 784],
+                            &d_images[idx / aug_factor * 784],
+                            sizeof(uint8_t) * 784, cudaMemcpyDeviceToDevice, NULL);
+            return;
+        }
+
+
+        // Rotation
+        int x, y;
+        double r, phi, x_, y_;
+        double rot = randfrom(-DL_ROTATIONMAX, DL_ROTATIONMAX, idx, seed);
+
+        for (int i = 0; i < 28; i++)
+        {
+            for (int j = 0; j < 28; j++)
+            {
+                // translate center of image to origin
+                x = j - 14;
+                y = i - 14;
+                cart_to_polar(x, y, &r, &phi);
+                phi += rot;
+                polar_to_cart(r, phi, &x_, &y_);
+                // translate back to center of image
+                x_ += 14;
+                y_ += 14;
+                // set new pixel
+                place_aliased_pixel(&d_images_dst[idx * 784], x_, y_, (&d_images[idx / aug_factor * 784])[i * 28 + j]);
+            }
+        }
+
+        // Shift
+        uint8_t aux[784];
+        int di = (int) randfrom(-DL_SHIFTMAX, DL_SHIFTMAX, idx, seed) * 1.001;
+        int dj = (int) randfrom(-DL_SHIFTMAX, DL_SHIFTMAX, idx, seed) * 1.001;
+        int is, js;
+
+        for (int i = 0; i < 28; i++)
+        {
+            for (int j = 0; j < 28; j++)
+            {
+                is = i + di;
+                js = j + dj;
+                if (is >= 0 && is < 28 && js >= 0 && js < 28)
+                    aux[is * 28 + js] = (&d_images_dst[idx * 784])[i * 28 + j];
+                (&d_images_dst[idx * 784])[i * 28 + j] = 0;
+            }
+        }
+
+        // Shear
+        double angle = randfrom(0, 2 * M_PI, idx, seed);
+        double shear_val = randfrom(0, DL_SHEARMAX, idx, seed);
+
+        for (int i = 0; i < 28; i++)
+        {
+            for (int j = 0; j < 28; j++)
+            {
+                x_ = j + i * cos(angle) * shear_val;
+                y_ = i + j * sin(angle) * shear_val;
+                place_aliased_pixel(&d_images_dst[idx * 784], x_, y_, aux[i * 28 + j]);
+            }
+        }
+    }
 }
 
 // Randomly rotate the image to create a new one

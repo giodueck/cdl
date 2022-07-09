@@ -23,6 +23,12 @@ The full options and help can be accessed using `./cdl -h`
 
 To compile see instructions in the src directory for the version needed, C or CUDA C.
 
+# GPU Acceleration
+
+For GPU acceleration I use CUDA C, a C-like language for general purpose gpu programming for NVidia cards.
+
+Some differences will be present in some aspects of the program, like for example augmented images changing less drastically in the CUDA version, but there is a significant speed-up to consider, like for example **18x** for image augmentation.
+
 # Samples
 
 The program dumps a serialized version of the network into a file, two such networks are available in the samples directory, with their name suggesting how many layers (including input and output) there are and how big each one is.
