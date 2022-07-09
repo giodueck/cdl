@@ -165,7 +165,7 @@ void dl_shift_image_rand(uint8_t *dst, uint8_t *image);
 void dl_shear_image_rand(uint8_t *dst, uint8_t *image);
 
 #ifdef __NVCC__
-#define NVCC_DEFINED 1
+
 
 #define BLOCK_SIZE 32
 
@@ -176,7 +176,7 @@ void dl_shear_image_rand(uint8_t *dst, uint8_t *image);
 __global__ void augment_images_CUDA(uint8_t *d_images_dst, uint8_t *d_images, int img_count, int aug_factor, unsigned long long seed);
 
 #else
-#define NVCC_DEFINED 0
+
 #endif
 
 #endif // NN_TOOLS_H

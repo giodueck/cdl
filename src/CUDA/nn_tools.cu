@@ -701,17 +701,6 @@ void dl_adjust(node *head)
     dl_adjust(head->next);
 }
 
-matrix dl_log_loss(matrix output, matrix expected)
-{
-    matrix loss = matrix_create(output.height, 1);
-    for (int i = 0; i < output.height; i++)
-    {
-        loss.matrix[i][0] = - output.matrix[i][0] * log(1e-15 + expected.matrix[i][0]);
-    }
-    
-    return loss;
-}
-
 // Compute loss matrix, 2 * (a(i) - y(i))
 matrix dl_mse_loss(matrix output, matrix expected)
 {
