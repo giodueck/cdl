@@ -595,7 +595,7 @@ int main(int argc, char **argv)
     double confidence = 0;
     char percent[8];
 
-    printf("%d %s in batches of %d pictures.\nLearning rate is %lf.\n", epochs, (epochs == 1) ? "epoch" : "epochs", batch_size, alpha);
+    printf("%d %s in batches of %d pictures.\nLearning rate is %lf.\n\n", epochs, (epochs == 1) ? "epoch" : "epochs", batch_size, alpha);
     for (int epoch = 0; epoch < epochs; epoch++)
     {    
         shuffle_images(images_v, labels, count);
@@ -666,7 +666,7 @@ int main(int argc, char **argv)
     if (filename[0] == '\0')
         sprintf(filename, "dl-%ld.dld", (long) time(0));
     dl_dump(head, filename);
-    printf("Saved model as %s\n", filename);
+    printf("\nSaved model as %s\n", filename);
 
     // Test model
     test_model(head, 1);
