@@ -25,7 +25,7 @@ To compile see instructions in the src directory for the version needed, C or CU
 
 # GPU Acceleration
 
-For GPU acceleration I use CUDA C, a C-like language for general purpose gpu programming for NVidia cards.
+For GPU acceleration I use CUDA C, a C-like language for general purpose GPU programming for NVidia cards.
 
 Some differences will be present in some aspects of the program, like for example augmented images changing less drastically in the CUDA version, but there is a significant speed-up to consider, like for example **18x** for image augmentation.
 
