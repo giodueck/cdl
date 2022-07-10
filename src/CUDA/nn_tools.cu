@@ -147,6 +147,21 @@ matrix matrix_mult(matrix A, matrix B)
     return C;
 }
 
+// d_a and d_b are multiplied and the result stored in d_c
+// d_c is assumed to be large enough
+__global__ void matrix_mult_CUDA(double *d_a, double *d_b, double *d_c, int m, int n, int k)
+{
+    int row = blockIdx.x * blockDim.x + threadIdx.x; 
+    int col = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (row < m && col < k)
+    {
+        d_c[row * k + col] = 0;
+        for (int i = 0; i < n; i++)
+            d_c[row * k + col] += d_a[row * n + i] * d_b[i * k + col];
+    }
+}
+
 // Multiplies all elements of A by n, returns the same matrix
 matrix matrix_scalar_mult(matrix A, double n)
 {
@@ -177,6 +192,13 @@ matrix matrix_add(matrix A, matrix B)
     return A;
 }
 
+__global__ void matrix_add_CUDA(double *d_a, double *d_b, int size)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size)
+        d_a[i] += d_b[i];
+}
+
 // Substracts B from A, modifies and returns A
 matrix matrix_sub(matrix A, matrix B)
 {
@@ -193,6 +215,13 @@ matrix matrix_sub(matrix A, matrix B)
     return A;
 }
 
+__global__ void matrix_sub_CUDA(double *d_a, double *d_b, int size)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size)
+        d_a[i] -= d_b[i];
+}
+
 // Applies sigmoid function to all values of a matrix, returns the same matrix
 // Specifically, this is the tanh function modified to output within (0, 1)
 matrix matrix_sigmoid(matrix A)
@@ -202,6 +231,13 @@ matrix matrix_sigmoid(matrix A)
             A.matrix[i][j] = (1 + tanh(A.matrix[i][j])) / 2;
 
     return A;
+}
+
+__global__ void matrix_sigmoid_CUDA(double *d_a, int size)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size)
+        d_a[i] = (1 + tanh(d_a[i])) / 2;
 }
 
 // Applies the derivative of the sigmoid function used in matrix_sigmoid to all
@@ -216,6 +252,16 @@ matrix matrix_derivated_sigmoid(matrix A)
         }
 
     return A;
+}
+
+__global__ void matrix_derivated_sigmoid_CUDA(double *d_a, int size)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size)
+    {
+        double r = tanh(d_a[i]);
+        d_a[i] = (1 - r * r) / 2;
+    }
 }
 
 /* generate a random floating point number from min to max */
@@ -772,6 +818,46 @@ node *dl_copy(node *head)
     return og_copy;
 }
 
+__global__ void dl_copy_node_CUDA(node *d_head, int layer, double *d_weights, double *d_biases)
+{
+    if (blockIdx.x == 0 && threadIdx.x == 0)
+    {
+        for (int i = 0; i < layer; i++)
+            d_head = d_head->next;
+
+        cudaMemcpyAsync(d_head->weights.matrix[0], d_weights,
+                        sizeof(double) * d_head->weights.height * d_head->weights.width, cudaMemcpyDeviceToDevice, 0);
+        cudaMemcpyAsync(d_head->biases.matrix[0], d_biases,
+                        sizeof(double) * d_head->biases.height, cudaMemcpyDeviceToDevice, 0);
+    }
+}
+
+void dl_copy_to_GPU(node *d_head, node *head)
+{
+    int layer = 1;
+    double *d_weights, *d_biases;
+    head = head->next;
+    while (head)
+    {
+        CUDA_CALL(cudaMalloc(&d_weights, sizeof(double) * head->weights.height * head->weights.width));
+        CUDA_CALL(cudaMalloc(&d_biases, sizeof(double) * head->biases.height));
+
+        CUDA_CALL(cudaMemcpy(d_weights, head->weights.matrix[0],
+                             sizeof(double) * head->weights.height * head->weights.width, cudaMemcpyHostToDevice));
+        CUDA_CALL(cudaMemcpy(d_biases, head->biases.matrix[0],
+                             sizeof(double) * head->biases.height, cudaMemcpyHostToDevice));
+
+        dl_copy_node_CUDA<<<1, 1>>>(d_head, layer, d_weights, d_biases);
+        CUDA_CALL(cudaPeekAtLastError());
+        CUDA_CALL(cudaDeviceSynchronize());
+
+        CUDA_CALL(cudaFree(d_weights));
+        CUDA_CALL(cudaFree(d_biases));
+        layer++;
+        head = head->next;
+    }
+}
+
 // Using an input column and the neural networks input node, calculate the result column
 // Does not use recursion to be able to use GPU acceleration
 matrix dl_process(node *in_node, matrix input)
@@ -813,6 +899,74 @@ matrix dl_process(node *in_node, matrix input)
 
     // input will be the result, not the original input
     return matrix_copy(tail->last_activations);
+}
+
+__global__ void dl_process_CUDA(node *d_head, double *d_input, double *d_output, int count)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < count)
+    {
+        node *d_tail = d_head;
+
+        // Input layer, copy input into activation vector
+        cudaMemcpyAsync(d_head->last_activations.matrix[0], d_input + d_head->last_activations.height * i,
+                        sizeof(double) * d_head->last_activations.height, cudaMemcpyDeviceToDevice, 0);
+
+        d_head = d_head->next;
+        while(d_head)
+        {
+            // for matrix multiplication, creates a new matrix
+            unsigned int grid_rows = (d_head->last_activations.height + BLOCK_SIZE - 1) / BLOCK_SIZE;
+            dim3 dimGrid(grid_rows, 1);
+            dim3 dimBlock(BLOCK_SIZE, BLOCK_SIZE);
+            // for operations on a matrix
+            unsigned int blocks = (d_head->last_activations.height) / BLOCK_SIZE + 1;
+
+            matrix_mult_CUDA<<<dimGrid, dimBlock>>>(d_head->weights.matrix[0], d_head->prev->last_activations.matrix[0],
+                                                    d_head->last_activations.matrix[0],
+                                                    d_head->weights.height, d_head->weights.width, 1);
+            matrix_add_CUDA<<<blocks, BLOCK_SIZE>>>(d_head->last_activations.matrix[0], d_head->biases.matrix[0],
+                                                    d_head->last_activations.height);
+
+            cudaMemcpyAsync(d_head->der_last_activations.matrix[0], d_head->last_activations.matrix[0],
+                            sizeof(double) * d_head->last_activations.height, cudaMemcpyDeviceToDevice, 0);
+            __syncthreads();
+
+            // Activations
+            matrix_sigmoid_CUDA<<<blocks, BLOCK_SIZE>>>(d_head->last_activations.matrix[0], d_head->last_activations.height);
+
+            // Derivated activations for backpropagation
+            matrix_derivated_sigmoid_CUDA<<<blocks, BLOCK_SIZE>>>(d_head->der_last_activations.matrix[0],
+                                                                  d_head->der_last_activations.height);
+
+            // go to next layer
+            d_tail = d_head;
+            d_head = d_head->next;
+        }
+
+        cudaMemcpyAsync(d_output, d_tail->last_activations.matrix[0], sizeof(double) * d_tail->last_activations.height, cudaMemcpyDeviceToDevice, 0);
+    }
+}
+
+matrix dl_process_GPU(node *d_in_node, matrix input, int n_outputs)
+{
+    matrix output = matrix_create(n_outputs, 1);
+
+    // Copy input into GPU
+    double *d_input, *d_output;
+    CUDA_CALL(cudaMalloc(&d_input, sizeof(double) * input.height));
+    CUDA_CALL(cudaMalloc(&d_output, sizeof(double) * n_outputs));
+    CUDA_CALL(cudaMemcpy(d_input, input.matrix[0], sizeof(double) * input.height, cudaMemcpyHostToDevice));
+
+    dl_process_CUDA<<<1, 1>>>(d_in_node, d_input, d_output, 1);
+    CUDA_CALL(cudaPeekAtLastError());
+    CUDA_CALL(cudaDeviceSynchronize());
+
+    CUDA_CALL(cudaMemcpy(output.matrix[0], d_output, sizeof(double) * n_outputs, cudaMemcpyDeviceToHost));
+
+    CUDA_CALL(cudaFree(d_input));
+    CUDA_CALL(cudaFree(d_output));
+    return output;
 }
 
 // Calculates the cost for the result

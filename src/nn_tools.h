@@ -182,6 +182,10 @@ __device__ matrix d_matrix_init_rand(matrix A, double min, double max, unsigned 
 node *dl_create_node_GPU(int type, int size, node *d_prev, unsigned long long seed);
 node *dl_create_GPU(int n_inputs, int n_layers, int *sizes, unsigned long long seed);
 int dl_free_GPU(node *d_head);
+void dl_copy_to_GPU(node *d_head, node *head);
+
+// Network procedures for GPU
+matrix dl_process_GPU(node *d_in_node, matrix input, int n_outputs);
 
 // Data augmentation
 __global__ void augment_images_CUDA(uint8_t *d_images_dst, uint8_t *d_images, int img_count, int aug_factor, unsigned long long seed);

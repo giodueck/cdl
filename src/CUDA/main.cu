@@ -560,19 +560,29 @@ int main(int argc, char **argv)
 
     if (from_filename[0] == '\0')
     {
-        printf("Creating network...");
+        printf("Creating network...CPU");
         fflush(stdout);
         head = dl_create(n_inputs, n_layers, sizes);
-        d_head = dl_create_GPU(n_inputs, n_layers, sizes, time(0));
     } else
     {
-        printf("Loading network...");
+        printf("Loading network...CPU");
         fflush(stdout);
         head = dl_load(from_filename);
         if (!head)
             exit(1);
         if (filename[0] == '\0')
             sprintf(filename, from_filename);
+        
+        // generate sizes and n_layers
+        node *curr = head->next;
+        n_layers = 1;
+        while (curr->next)
+        {
+            sizes[n_layers - 1] = curr->weights.height;
+            sizes = (int*) realloc(sizes, sizeof(int) * ++n_layers);
+            curr = curr->next;
+        }
+        sizes[n_layers - 1] = n_outputs;
     }
 
     if (dl_check(head) < n_layers + 1)
@@ -581,8 +591,13 @@ int main(int argc, char **argv)
         fprintf(stderr, "Network creation: %d layers found, %d expected.\n", dl_check(head), n_layers + 1);
         return 0;
     }
+    printf("\b\b\bGPU");
+    fflush(stdout);
+    d_head = dl_create_GPU(n_inputs, n_layers, sizes, time(0));
+    if (from_filename[0] != '\0')
+        dl_copy_to_GPU(d_head, head);
 
-    printf("done!\n");
+    printf("\b\b\bdone!\n");
     dl_print_structure(head);
     free(sizes);
     printf("\n");
@@ -644,7 +659,6 @@ int main(int argc, char **argv)
                 loss = dl_mse_loss(output, expected);
                 dl_backpropagation(head, loss, alpha);
 
-                // dbg: testing correctness
                 // verification
                 choice = 0;
                 for (int m = 0; m < output.height; m++)
