@@ -201,9 +201,7 @@ matrix matrix_init(matrix A, double **mat)
 // Takes in matrix struct and returns copy
 matrix matrix_copy(matrix from)
 {
-    matrix ret = matrix_create(from.height, from.width);
-    matrix_init(ret, from.matrix);
-    return ret;
+    return matrix_init(matrix_create(from.height, from.width), from.matrix);
 }
 
 // Sets the entire matrix to 0, returns the same matrix
@@ -666,21 +664,26 @@ void dl_adjust(node *head)
     if (head == NULL)
         return;
 
-    if (head->prev && head->n_ca) // not the input layer and adjustments to make
-    {
-        matrix_sub(head->weights, matrix_scalar_mult(head->ca_weights, (double) 1 / head->n_ca));
-        matrix_sub(head->biases, matrix_scalar_mult(head->ca_biases, (double) 1 / head->n_ca));
-        matrix_zero(head->ca_weights);
-        matrix_zero(head->ca_biases);
-        head->n_ca = 0;
-    }
     // check the network once when at the input layer
-    else if (!dl_check(head))
+    if (!dl_check(head))
     {
         fprintf(stderr, "dl_adjust: Adjustment matrices incompatible\n");
         return;
     }
-    dl_adjust(head->next);
+
+    head = head->next;
+    while (head)
+    {
+        if (head->n_ca)
+        {
+            matrix_sub(head->weights, matrix_scalar_mult(head->ca_weights, (double) 1 / head->n_ca));
+            matrix_sub(head->biases, matrix_scalar_mult(head->ca_biases, (double) 1 / head->n_ca));
+            matrix_zero(head->ca_weights);
+            matrix_zero(head->ca_biases);
+            head->n_ca = 0;
+        }
+        head = head->next;
+    }
 }
 
 // Compute loss matrix, 2 * (a(i) - y(i))
@@ -707,7 +710,7 @@ void dl_backpropagation(node *head, matrix loss, double alpha)
     
     if (tail->last_activations.height != loss.height)
     {
-        fprintf(stderr, "dl_backwards_pass: Output and loss matrix height differ: %d to %d.\n", tail->last_activations.height, loss.height);
+        fprintf(stderr, "dl_backpropagation: Output and loss matrix height differ: %d to %d.\n", tail->last_activations.height, loss.height);
         exit(1);
     }
 
