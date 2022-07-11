@@ -631,6 +631,7 @@ int main(int argc, char **argv)
                 // Backwards
                 loss = dl_mse_loss(output, expected);
                 dl_backpropagation(head, loss, alpha);
+                matrix_free(loss);
 
                 // dbg: testing correctness
                 // verification
