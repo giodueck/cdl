@@ -66,9 +66,7 @@ void matrix_print(matrix A, const char *end)
         }
         printf("\n");
     }
-    if (end == NULL)
-        printf("\n");
-    else
+    if (end != NULL)
         printf(end);
     fflush(stdout);
 }
