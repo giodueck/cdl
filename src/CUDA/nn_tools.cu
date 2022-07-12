@@ -113,9 +113,7 @@ void matrix_print(matrix A, const char *end)
         }
         printf("\n");
     }
-    if (end == NULL)
-        printf("\n");
-    else
+    if (end != NULL)
         printf(end);
     fflush(stdout);
 }
@@ -174,6 +172,13 @@ matrix matrix_scalar_mult(matrix A, double n)
     }
 
     return A;
+}
+
+__global__ void matrix_scalar_mult_CUDA(double *d_a, double n, int size)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < size)
+        d_a[i] *= n;
 }
 
 // Adds B to A, modifies and returns A
@@ -307,12 +312,22 @@ matrix matrix_init(matrix A, double **mat)
     return A;
 }
 
+__device__ matrix d_matrix_init(matrix A, double **mat)
+{
+    cudaMemcpyAsync(A.matrix[0], mat[0], sizeof(double) * A.height * A.width, cudaMemcpyDeviceToDevice, 0);
+
+    return A;
+}
+
 // Takes in matrix struct and returns copy
 matrix matrix_copy(matrix from)
 {
-    matrix ret = matrix_create(from.height, from.width);
-    matrix_init(ret, from.matrix);
-    return ret;
+    return matrix_init(matrix_create(from.height, from.width), from.matrix);
+}
+
+__device__ matrix d_matrix_copy(matrix from)
+{
+    return d_matrix_init(d_matrix_create(from.height, from.width), from.matrix);
 }
 
 // Sets the entire matrix to 0, returns the same matrix
@@ -928,9 +943,7 @@ __global__ void dl_process_CUDA(node *d_head, double *d_input, double *d_output,
             matrix_add_CUDA<<<blocks, BLOCK_SIZE>>>(d_head->last_activations.matrix[0], d_head->biases.matrix[0],
                                                     d_head->last_activations.height);
 
-            cudaMemcpyAsync(d_head->der_last_activations.matrix[0], d_head->last_activations.matrix[0],
-                            sizeof(double) * d_head->last_activations.height, cudaMemcpyDeviceToDevice, 0);
-            __syncthreads();
+            d_matrix_init(d_head->der_last_activations, d_head->last_activations.matrix);
 
             // Activations
             matrix_sigmoid_CUDA<<<blocks, BLOCK_SIZE>>>(d_head->last_activations.matrix[0], d_head->last_activations.height);
@@ -997,21 +1010,68 @@ void dl_adjust(node *head)
     if (head == NULL)
         return;
 
-    if (head->prev && head->n_ca) // not the input layer and adjustments to make
-    {
-        matrix_sub(head->weights, matrix_scalar_mult(head->ca_weights, (double) 1 / head->n_ca));
-        matrix_sub(head->biases, matrix_scalar_mult(head->ca_biases, (double) 1 / head->n_ca));
-        matrix_zero(head->ca_weights);
-        matrix_zero(head->ca_biases);
-        head->n_ca = 0;
-    }
     // check the network once when at the input layer
-    else if (!dl_check(head))
+    if (!dl_check(head))
     {
         fprintf(stderr, "dl_adjust: Adjustment matrices incompatible\n");
         return;
     }
-    dl_adjust(head->next);
+
+    head = head->next;
+    while (head)
+    {
+        if (head->n_ca)
+        {
+            matrix_sub(head->weights, matrix_scalar_mult(head->ca_weights, (double) 1 / head->n_ca));
+            matrix_sub(head->biases, matrix_scalar_mult(head->ca_biases, (double) 1 / head->n_ca));
+            matrix_zero(head->ca_weights);
+            matrix_zero(head->ca_biases);
+            head->n_ca = 0;
+        }
+        head = head->next;
+    }
+}
+
+__global__ void dl_adjust_CUDA(node *d_head)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i == 0)
+    {
+        // skip input layer
+        d_head = d_head->next;
+        while (d_head)
+        {
+            if (d_head->n_ca)
+            {
+                unsigned int wblocks = d_head->ca_weights.height * d_head->ca_weights.width / BLOCK_SIZE + 1;
+                unsigned int bblocks = d_head->ca_biases.height / BLOCK_SIZE + 1;
+
+                double inv_n_ca = (double) 1 / d_head->n_ca;
+
+                matrix_scalar_mult_CUDA<<<wblocks, BLOCK_SIZE>>>(d_head->ca_weights.matrix[0],
+                                        inv_n_ca, d_head->ca_weights.height * d_head->ca_weights.width);
+                matrix_scalar_mult_CUDA<<<bblocks, BLOCK_SIZE>>>(d_head->ca_biases.matrix[0],
+                                        inv_n_ca, d_head->ca_biases.height);
+
+                matrix_sub_CUDA<<<wblocks, BLOCK_SIZE>>>(d_head->weights.matrix[0], d_head->ca_weights.matrix[0],
+                                            d_head->weights.height * d_head->weights.width);
+                matrix_sub_CUDA<<<bblocks, BLOCK_SIZE>>>(d_head->biases.matrix[0], d_head->ca_biases.matrix[0],
+                                            d_head->biases.height);
+                
+                d_matrix_zero(d_head->ca_weights);
+                d_matrix_zero(d_head->ca_biases);
+                d_head->n_ca = 0;
+            }
+            d_head = d_head->next;
+        }
+    }
+}
+
+void dl_adjust_GPU(node *d_head)
+{
+    dl_adjust_CUDA<<<1, 1>>>(d_head);
+    CUDA_CALL(cudaPeekAtLastError());
+    CUDA_CALL(cudaDeviceSynchronize());
 }
 
 // Compute loss matrix, 2 * (a(i) - y(i))
@@ -1038,7 +1098,7 @@ void dl_backpropagation(node *head, matrix loss, double alpha)
     
     if (tail->last_activations.height != loss.height)
     {
-        fprintf(stderr, "dl_backwards_pass: Output and loss matrix height differ: %d to %d.\n", tail->last_activations.height, loss.height);
+        fprintf(stderr, "dl_backpropagation: Output and loss matrix height differ: %d to %d.\n", tail->last_activations.height, loss.height);
         exit(1);
     }
 
@@ -1077,6 +1137,67 @@ void dl_backpropagation(node *head, matrix loss, double alpha)
         tail = tail->prev;
     }
     matrix_free(loss);
+}
+
+__global__ void dl_backpropagation_CUDA(node *d_head, double *d_loss, double alpha, int count)
+{
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i < count)
+    {
+        // look for tail
+        node *d_tail = d_head;
+        while (d_tail->next)
+            d_tail = d_tail->next;
+
+        matrix loss = d_matrix_init(d_matrix_create(d_tail->last_activations.height, 1), &d_loss);
+        matrix new_loss;
+        while(d_tail->prev)
+        {
+            new_loss = d_matrix_create(d_tail->prev->last_activations.height, 1);
+
+            for (int i = 0; i < d_tail->ca_weights.height; i++)
+            {
+                for (int j = 0; j < d_tail->ca_weights.width; j++)
+                {
+                    // strictly speaking, the loss should be multiplied by 2, but that is a constant that can be part of alpha
+                    d_tail->ca_weights.matrix[i][j] += d_tail->der_last_activations.matrix[i][0]
+                                                * loss.matrix[i][0]
+                                                * d_tail->prev->last_activations.matrix[j][0]
+                                                * alpha;
+                }
+                d_tail->ca_biases.matrix[i][0] += loss.matrix[i][0] * alpha;
+            }
+
+            for (int j = 0; j < new_loss.height; j++)
+            {
+                for (int i = 0; i < d_tail->ca_weights.height; i++)
+                {
+                    new_loss.matrix[j][0] += d_tail->der_last_activations.matrix[i][0] * loss.matrix[i][0] * d_tail->weights.matrix[i][j];
+                }
+            }
+
+            // backpropagate
+            d_tail->n_ca++;
+            d_matrix_free(loss);
+            loss = new_loss;
+            d_tail = d_tail->prev;
+        }
+        d_matrix_free(loss);
+    }
+}
+
+void dl_backpropagation_GPU(node *d_head, matrix loss, double alpha)
+{
+    double *d_loss;
+
+    CUDA_CALL(cudaMalloc(&d_loss, sizeof(double) * loss.height));
+    CUDA_CALL(cudaMemcpy(d_loss, loss.matrix[0], sizeof(double) * loss.height, cudaMemcpyHostToDevice));
+
+    dl_backpropagation_CUDA<<<1, 1>>>(d_head, d_loss, alpha, 1);
+    CUDA_CALL(cudaPeekAtLastError());
+    CUDA_CALL(cudaDeviceSynchronize());
+
+    CUDA_CALL(cudaFree(d_loss));
 }
 
 __host__ __device__ void cart_to_polar(double x, double y, double *r, double *phi)

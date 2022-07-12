@@ -186,6 +186,8 @@ void dl_copy_to_GPU(node *d_head, node *head);
 
 // Network procedures for GPU
 matrix dl_process_GPU(node *d_in_node, matrix input, int n_outputs);
+void dl_backpropagation_GPU(node *d_head, matrix loss, double alpha);
+void dl_adjust_GPU(node *d_head);
 
 // Data augmentation
 __global__ void augment_images_CUDA(uint8_t *d_images_dst, uint8_t *d_images, int img_count, int aug_factor, unsigned long long seed);

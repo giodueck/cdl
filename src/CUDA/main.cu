@@ -593,8 +593,10 @@ int main(int argc, char **argv)
     }
     printf("\b\b\bGPU");
     fflush(stdout);
+    // This creates a similar in shape network in the GPU, but with different initializations
     d_head = dl_create_GPU(n_inputs, n_layers, sizes, time(0));
     if (from_filename[0] != '\0')
+        // if the network exists, the GPU version should be identical
         dl_copy_to_GPU(d_head, head);
 
     printf("\b\b\bdone!\n");
@@ -653,11 +655,14 @@ int main(int argc, char **argv)
 
                 // Forwards
                 output = dl_process(head, input);
+                // output = dl_process_GPU(d_head, input, n_outputs);
                 costs[i] += dl_cost(output, expected);
 
                 // Backwards
                 loss = dl_mse_loss(output, expected);
                 dl_backpropagation(head, loss, alpha);
+                // dl_backpropagation_GPU(d_head, loss, alpha);
+                matrix_free(loss);
 
                 // verification
                 choice = 0;
@@ -678,6 +683,7 @@ int main(int argc, char **argv)
             }
             costs[i] /= batch_size;
             dl_adjust(head);
+            // dl_adjust_GPU(d_head);
         }
         
         for (int l = 0; l < batches; l++)
